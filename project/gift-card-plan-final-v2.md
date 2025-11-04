@@ -37,8 +37,8 @@ This separation ensures:
 | Metric | Value |
 |--------|-------|
 | **Total Tasks** | 72 tasks (all required) |
-| **Completed Tasks** | 5 tasks (7%) |
-| **Current Phase** | Phase 0 - Project Bootstrap |
+| **Completed Tasks** | 17 tasks (24%) |
+| **Current Phase** | Phase 2 - Application Layer |
 | **Estimated Duration** | 5 weeks (25 days) |
 | **Start Date** | TBD |
 | **Target Completion** | TBD |
@@ -58,8 +58,8 @@ This separation ensures:
 - **Dependencies**: cashu-lib (0.5.0), nostr-java (0.6.0), existing NUT-13 implementation, PicoCLI framework
 
 ### Key Milestones
-1. ⏳ Phase 0 Complete - Project structure ready
-2. ⏳ Phase 1 Complete - Domain layer foundation
+1. ✅ Phase 0 Complete - Project structure ready
+2. ✅ Phase 1 Complete - Domain layer foundation
 3. ⏳ Phase 2 Complete - Application services
 4. ⏳ Phase 3 Complete - Nostr adapter
 5. ⏳ Phase 4 Complete - Mint integration
@@ -73,14 +73,14 @@ This separation ensures:
 
 | Phase | Focus Area | Tasks | Estimated Time | Status |
 |-------|-----------|-------|----------------|--------|
-| **Phase 0** | Project Bootstrap | 6 tasks | 3 days | In Progress (5/6) |
-| **Phase 1** | Domain Layer | 11 tasks | 4 days | Not Started |
+| **Phase 0** | Project Bootstrap | 6 tasks | 3 days | ✅ Complete (6/6) |
+| **Phase 1** | Domain Layer | 11 tasks | 4 days | ✅ Complete (11/11) |
 | **Phase 2** | Application Layer | 10 tasks | 3 days | Not Started |
 | **Phase 3** | Nostr Layer | 11 tasks | 5 days | Not Started |
 | **Phase 4** | Mint Integration | 8 tasks | 3 days | Not Started |
 | **Phase 5** | Wallet & CLI | 14 tasks | 4 days | Not Started |
 | **Phase 6** | Testing & Documentation | 12 tasks | 2 days | Not Started |
-| **Total** | All Phases | **72 tasks** | **24 days** | **7% Complete** |
+| **Total** | All Phases | **72 tasks** | **24 days** | **24% Complete** |
 
 ---
 
@@ -1496,13 +1496,13 @@ public class IssueVoucherCmd extends WalletServiceCommand<Integer> {
 | 0.3 | Create module skeletons | ✓ Complete | Medium | P0 | 0.2 | All 3 modules | 3f72178 | Maven structure, src directories, module POMs |
 | 0.4 | Setup GitHub Actions CI/CD | ✓ Complete | Medium | P0 | 0.3 | `.github/workflows/build.yml` | 0dfe22f | Build, test, JaCoCo coverage, artifact upload |
 | 0.5 | Configure Maven publishing | ✓ Complete | Small | P0 | 0.4 | `pom.xml` distributionManagement | 7a16572 | Deploy plugin, source/javadoc JARs |
-| 0.6 | Verify build pipeline | Pending | Small | P1 | 0.4, 0.5 | GitHub Actions | - | Ensure all modules compile |
+| 0.6 | Verify build pipeline | ✓ Complete | Small | P1 | 0.4, 0.5 | BUILD.md | 3065444 | All modules compile, artifacts generated |
 
 **Deliverables**:
-- [ ] Repository structure complete
-- [ ] Parent POM configured
-- [ ] CI/CD pipeline green
-- [ ] Empty modules building successfully
+- [x] Repository structure complete
+- [x] Parent POM configured
+- [x] CI/CD pipeline green
+- [x] Empty modules building successfully
 
 [↑ Back to top](#table-of-contents)
 
@@ -1512,22 +1512,22 @@ public class IssueVoucherCmd extends WalletServiceCommand<Integer> {
 
 | ID | Task | Status | Task Size | Priority | Dependency | Location | Commit | Notes |
 |----|------|--------|-----------|----------|------------|----------|--------|-------|
-| 1.1 | Implement VoucherSecret | Pending | Large | P0 | Phase 0 | `cashu-voucher-domain/src/main/java/.../VoucherSecret.java` | - | Extends BaseKey, implements Secret |
-| 1.2 | Implement SignedVoucher | Pending | Medium | P0 | 1.1 | `cashu-voucher-domain/src/main/java/.../SignedVoucher.java` | - | Wrapper with signature |
-| 1.3 | Implement VoucherSignatureService | Pending | Large | P0 | 1.1, 1.2 | `cashu-voucher-domain/src/main/java/.../VoucherSignatureService.java` | - | ED25519 sign/verify |
-| 1.4 | Implement VoucherValidator | Pending | Medium | P0 | 1.2, 1.3 | `cashu-voucher-domain/src/main/java/.../VoucherValidator.java` | - | Validation logic |
-| 1.5 | Implement VoucherStatus enum | Pending | Small | P0 | None | `cashu-voucher-domain/src/main/java/.../VoucherStatus.java` | - | ISSUED, REDEEMED, REVOKED, EXPIRED |
-| 1.6 | Implement VoucherSerializationUtils | Pending | Medium | P0 | 1.1 | `cashu-voucher-domain/src/main/java/.../util/VoucherSerializationUtils.java` | - | CBOR serialization |
-| 1.7 | Write VoucherSecret unit tests | Pending | Large | P1 | 1.1, 1.6 | `cashu-voucher-domain/src/test/java/` | - | 20+ tests: creation, serialization, expiry |
-| 1.8 | Write SignedVoucher unit tests | Pending | Medium | P1 | 1.2 | `cashu-voucher-domain/src/test/java/` | - | 10+ tests: verification, validity |
-| 1.9 | Write VoucherSignatureService tests | Pending | Large | P1 | 1.3 | `cashu-voucher-domain/src/test/java/` | - | 15+ tests: sign/verify, test vectors |
-| 1.10 | Write VoucherValidator tests | Pending | Medium | P1 | 1.4 | `cashu-voucher-domain/src/test/java/` | - | 10+ tests: validation rules |
-| 1.11 | Verify 80%+ code coverage | Pending | Small | P1 | 1.7-1.10 | JaCoCo report | - | Run mvn jacoco:report |
+| 1.1 | Implement VoucherSecret | ✓ Complete | Large | P0 | Phase 0 | `cashu-voucher-domain/src/main/java/.../VoucherSecret.java` | - | Extends BaseKey, implements Secret |
+| 1.2 | Implement SignedVoucher | ✓ Complete | Medium | P0 | 1.1 | `cashu-voucher-domain/src/main/java/.../SignedVoucher.java` | - | Wrapper with signature |
+| 1.3 | Implement VoucherSignatureService | ✓ Complete | Large | P0 | 1.1, 1.2 | `cashu-voucher-domain/src/main/java/.../VoucherSignatureService.java` | - | ED25519 sign/verify |
+| 1.4 | Implement VoucherValidator | ✓ Complete | Medium | P0 | 1.2, 1.3 | `cashu-voucher-domain/src/main/java/.../VoucherValidator.java` | - | Validation logic |
+| 1.5 | Implement VoucherStatus enum | ✓ Complete | Small | P0 | None | `cashu-voucher-domain/src/main/java/.../VoucherStatus.java` | - | ISSUED, REDEEMED, REVOKED, EXPIRED |
+| 1.6 | Implement VoucherSerializationUtils | ✓ Complete | Medium | P0 | 1.1 | `cashu-voucher-domain/src/main/java/.../util/VoucherSerializationUtils.java` | - | CBOR serialization |
+| 1.7 | Write VoucherSecret unit tests | ✓ Complete | Large | P1 | 1.1, 1.6 | `cashu-voucher-domain/src/test/java/` | - | 39 tests: creation, serialization, expiry |
+| 1.8 | Write SignedVoucher unit tests | ✓ Complete | Medium | P1 | 1.2 | `cashu-voucher-domain/src/test/java/` | - | 30 tests: verification, validity |
+| 1.9 | Write VoucherSignatureService tests | ✓ Complete | Large | P1 | 1.3 | `cashu-voucher-domain/src/test/java/` | - | 31 tests: sign/verify, test vectors |
+| 1.10 | Write VoucherValidator tests | ✓ Complete | Medium | P1 | 1.4 | `cashu-voucher-domain/src/test/java/` | - | 26 tests: validation rules |
+| 1.11 | Verify 80%+ code coverage | ✓ Complete | Small | P1 | 1.7-1.10 | JaCoCo report | - | 80% line coverage achieved |
 
 **Deliverables**:
-- [ ] `cashu-voucher-domain-0.1.0.jar`
-- [ ] 50+ unit tests passing
-- [ ] 80%+ code coverage
+- [x] `cashu-voucher-domain-0.1.0.jar`
+- [x] 50+ unit tests passing (126 tests)
+- [x] 80%+ code coverage (80% line, 78% instruction)
 - [ ] Published to Maven
 
 [↑ Back to top](#table-of-contents)
@@ -1735,36 +1735,36 @@ public class IssueVoucherCmd extends WalletServiceCommand<Integer> {
 - [x] Published to maven.398ja.xyz
 
 **Phase 1 Complete**:
-- [x] cashu-voucher-domain-0.1.0 published
-- [x] 50+ unit tests passing
-- [x] 80%+ code coverage
+- [x] cashu-voucher-domain-0.1.0 built (126 tests passing)
+- [x] 50+ unit tests passing (exceeded: 126 tests)
+- [x] 80%+ code coverage (achieved: 80% line, 78% instruction)
 
 **Phase 2 Complete**:
-- [x] cashu-voucher-app-0.1.0 published
-- [x] Port interfaces defined
-- [x] 40+ service tests passing
+- [ ] cashu-voucher-app-0.1.0 published
+- [ ] Port interfaces defined
+- [ ] 40+ service tests passing
 
 **Phase 3 Complete**:
-- [x] cashu-voucher-nostr-0.1.0 published
-- [x] NIP-33 + NIP-17 implemented
-- [x] 40+ integration tests passing
+- [ ] cashu-voucher-nostr-0.1.0 published
+- [ ] NIP-33 + NIP-17 implemented
+- [ ] 40+ integration tests passing
 
 **Phase 4 Complete**:
-- [x] Mint voucher API working
-- [x] Model B rejection working
-- [x] 20+ integration tests passing
+- [ ] Mint voucher API working
+- [ ] Model B rejection working
+- [ ] 20+ integration tests passing
 
 **Phase 5 Complete**:
-- [x] Wallet voucher storage working
-- [x] 9 CLI commands functional
-- [x] NUT-13 integration working
-- [x] 30+ CLI tests passing
+- [ ] Wallet voucher storage working
+- [ ] 9 CLI commands functional
+- [ ] NUT-13 integration working
+- [ ] 30+ CLI tests passing
 
 **Phase 6 Complete**:
-- [x] 20+ E2E tests passing
-- [x] Documentation complete (5 guides)
-- [x] Performance benchmarks documented
-- [x] Production-ready (v0.1.0 released)
+- [ ] 20+ E2E tests passing
+- [ ] Documentation complete (5 guides)
+- [ ] Performance benchmarks documented
+- [ ] Production-ready (v0.1.0 released)
 
 [↑ Back to top](#table-of-contents)
 
@@ -1915,7 +1915,7 @@ VoucherService service = new VoucherService(
 **Document Status**: ✅ Final v2 - Implementation In Progress
 **Last Updated**: 2025-11-04
 **Architecture**: Hexagonal (Ports & Adapters)
-**Total Tasks**: 72 (3% complete - 2/72)
-**Progress**: Phase 0 in progress (2/6 tasks complete)
-**Latest Commit**: c42d2de (Task 0.2 - Parent POM created)
-**Next Action**: Task 0.3 - Create module skeletons
+**Total Tasks**: 72 (24% complete - 17/72)
+**Progress**: Phase 1 complete (11/11 tasks), entering Phase 2
+**Latest Milestone**: Phase 1 - Domain Layer complete (126 tests, 80% coverage)
+**Next Action**: Phase 2.1 - Define VoucherLedgerPort interface

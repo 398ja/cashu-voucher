@@ -179,6 +179,7 @@ Event kinds and tags (align with README):
 
 Project documentation
 - The `project/` directory captures ongoing protocol work (voucher compatibility, CLI integration, release phases). Review these documents when implementing Model B, Nostr storage, or NUT-13 features to stay aligned with the planned architecture.
+- Keep `project/README.md` updated when adding or renaming documents.
 
 ## Pre-Submit Checklist
 - Code follows module guidelines above and maintains deterministic behaviour where required.
