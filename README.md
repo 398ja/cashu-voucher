@@ -17,8 +17,8 @@ This project follows **Hexagonal Architecture** (Ports & Adapters) with three mo
 ## Project Status
 
 **Version**: 0.1.0 (in development)
-**Status**: Phase 0 - Project Bootstrap
-**Progress**: 5/72 tasks complete (7%)
+**Status**: Phase 1 - Domain Layer
+**Progress**: 6/72 tasks complete (8%)
 
 ## Modules
 
@@ -74,7 +74,7 @@ mvn jacoco:report
 
 ## Documentation
 
-See the local `project/` directory for comprehensive documentation:
+See the local `project/` directory for comprehensive documentation. Start with `project/README.md` for an index of plans and research.
 
 - `gift-card-plan-final-v2.md` - Implementation plan
 - `voucher-architecture-diagrams.md` - Architecture diagrams
