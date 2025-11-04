@@ -20,6 +20,7 @@ When behaviour intersects these specifications, review the relevant documents an
 - `cashu-voucher-domain/`: pure domain logic for vouchers (no infrastructure dependencies). Business rules, deterministic serialization helpers, and crypto boundaries live here.
 - `cashu-voucher-app/`: application services and port interfaces. Defines use-cases and infrastructure-agnostic contracts.
 - `cashu-voucher-nostr/`: Nostr infrastructure adapter implementing the ports (event kinds/tags, encryption, and relay I/O).
+- `project/`: design notebooks, protocol analysis, voucher plans, and long-form documentation copied from cashu-lib for local reference.
 - `README.md`: high-level overview and usage.
 - `LICENSE`: project license.
 
@@ -99,12 +100,57 @@ Event kinds and tags (align with README):
 
 ## Testing
 - Frameworks: JUnit 5, Mockito, AssertJ.
-- Commands: `./mvnw -q verify` runs the full suite with coverage. Use `-pl`/`-am` for module-scoped runs.
+- Commands: `mvn -q verify` runs the full suite with coverage. Use `-pl`/`-am` for module-scoped runs.
 - Guidelines:
   - Unit tests should not hit network, filesystem, or real relays. Mock ports in the application layer; use pure domain tests otherwise.
   - Prefer deterministic seeds for random data; inject clocks and entropy sources.
   - Cover happy paths and edge cases (invalid encodings, boundary amounts, expired vouchers, key mismatches).
   - Keep tests fast and isolated. Avoid order dependencies.
+
+## Error Handling
+- Domain layer:
+  - Use domain-scoped exception types with precise messages. Validate invariants eagerly; fail fast on malformed input.
+  - Do not leak infrastructure exceptions; wrap and map to domain/application errors.
+- Application layer:
+  - Convert domain exceptions to result types or well-defined checked/unchecked exceptions suitable for adapters.
+  - Include stable error codes where user-facing systems are expected to react (e.g., `VOUCHER_NOT_ACCEPTED` for Model B).
+- Nostr adapter:
+  - Treat relay/network errors as transient; implement retries/backoff and surface actionable context to callers without exposing low-level details.
+  - Timeouts and cancellation should be configurable via adapter policies or method parameters.
+
+## Logging
+- Use SLF4J; avoid logging secrets, voucher material, or private keys.
+- Levels:
+  - ERROR: irrecoverable failures after retries; include voucher or event identifiers (not secrets).
+  - WARN: transient issues, partial failures, or fallback paths.
+  - INFO: lifecycle events (startup, connection established, release info).
+  - DEBUG: protocol details useful during development (event kinds, tag shapes) without sensitive payloads.
+- Structure logs with stable fields: `voucherId`, `merchantId`, `nostrKind`, `relay`, `keysetId`.
+
+## Documentation
+- Keep `README.md` aligned with current module responsibilities, key classes, CLI commands, and Nostr event kinds/tags.
+- Public APIs (domain/app ports) should have Javadoc explaining invariants, threading expectations, and error semantics.
+- This repo does not include `docs/` or `project/`; defer to cashu-lib’s documentation for deep protocol and planning material and link from `README.md` when relevant.
+
+## Versioning & Release
+- Versioning: follow Semantic Versioning. Keep all modules on the same version (`pom.xml` parent and child inherit).
+- Dependencies: `cashu-lib.version` is pinned in the parent POM; update in one place when bumping.
+- Distribution: artifacts are configured to deploy to `https://maven.398ja.xyz` (releases) and `/snapshots` via `distributionManagement` in the parent POM.
+- Release flow (manual baseline):
+  - Ensure tests pass and coverage meets threshold: `mvn -q verify`.
+  - Bump `<version>` in the parent POM (propagates to modules), update `README.md` status/version.
+  - Tag the release `vX.Y.Z` and publish artifacts if credentials are configured: `mvn -q -DskipTests deploy`.
+  - For snapshot development, append `-SNAPSHOT` to the parent version.
+- If adopting automation later (e.g., release-please), avoid hand-editing generated sections and follow the tool’s workflow.
+
+## Project Research Notes
+- Authoritative research and plans live in cashu-lib’s `project/` directory (linked from this repo’s `README.md`). Key documents include:
+  - `gift-card-plan-final-v2.md` – Implementation plan
+  - `voucher-architecture-diagrams.md` – Architecture diagrams
+  - `voucher-test-plan.md` – Test specifications
+  - `voucher-deployment-guide.md` – Deployment guide
+  - `voucher-api-specification.md` – API reference
+- Consult these when implementing or reviewing Model B logic, Nostr storage flows, and deterministic secret handling (NUT-13).
 
 ## Style & Conventions
 - Language: Java 21, `-parameters` compiler arg enabled.
@@ -131,8 +177,8 @@ Event kinds and tags (align with README):
 - If you add new DTOs or protocol-relevant structures, ensure their serializers/deserializers are included and tested.
  - Cross-reference `README.md` for current module responsibilities, key classes, and CLI commands.
 
-External documentation
-- This repository does not include a `docs/` or `project/` directory. For deeper protocol background and voucher plans, see the documentation in the cashu-lib project referenced from `README.md`.
+Project documentation
+- The `project/` directory captures ongoing protocol work (voucher compatibility, CLI integration, release phases). Review these documents when implementing Model B, Nostr storage, or NUT-13 features to stay aligned with the planned architecture.
 
 ## Pre-Submit Checklist
 - Code follows module guidelines above and maintains deterministic behaviour where required.

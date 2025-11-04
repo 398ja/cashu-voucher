@@ -18,7 +18,7 @@ This project follows **Hexagonal Architecture** (Ports & Adapters) with three mo
 
 **Version**: 0.1.0 (in development)
 **Status**: Phase 0 - Project Bootstrap
-**Progress**: 4/72 tasks complete (6%)
+**Progress**: 5/72 tasks complete (7%)
 
 ## Modules
 
@@ -74,7 +74,7 @@ mvn jacoco:report
 
 ## Documentation
 
-See the `project/` directory in cashu-lib for comprehensive documentation:
+See the local `project/` directory for comprehensive documentation:
 
 - `gift-card-plan-final-v2.md` - Implementation plan
 - `voucher-architecture-diagrams.md` - Architecture diagrams
