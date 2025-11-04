@@ -1,5 +1,7 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NonNull;
@@ -39,17 +41,20 @@ public final class SignedVoucher {
     /**
      * The voucher secret containing all voucher details.
      */
+    @JsonProperty("secret")
     private final VoucherSecret secret;
 
     /**
      * The issuer's ED25519 signature over the canonical bytes of the secret.
      */
+    @JsonProperty("issuerSignature")
     private final byte[] issuerSignature;
 
     /**
      * The issuer's ED25519 public key (hex-encoded).
      * Used to verify the signature.
      */
+    @JsonProperty("issuerPublicKey")
     private final String issuerPublicKey;
 
     /**
@@ -60,10 +65,11 @@ public final class SignedVoucher {
      * @param issuerPublicKey the issuer's public key hex string (must not be null)
      * @throws IllegalArgumentException if any parameter is invalid
      */
+    @JsonCreator
     public SignedVoucher(
-            @NonNull VoucherSecret secret,
-            @NonNull byte[] issuerSignature,
-            @NonNull String issuerPublicKey
+            @NonNull @JsonProperty("secret") VoucherSecret secret,
+            @NonNull @JsonProperty("issuerSignature") byte[] issuerSignature,
+            @NonNull @JsonProperty("issuerPublicKey") String issuerPublicKey
     ) {
         if (issuerSignature.length != 64) {
             throw new IllegalArgumentException(
