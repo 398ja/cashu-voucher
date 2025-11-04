@@ -25,9 +25,10 @@ When behaviour intersects these specifications, review the relevant documents an
 
 ## Tooling & Build
 - Target Java 21 (Temurin). Compiler release set to 21 in the parent POM.
-- Use the Maven wrapper for all builds:
-  - Full build + tests: `./mvnw -q verify`
-  - Module build: `./mvnw -q -pl <module> -am verify`
+- Use Maven for builds:
+  - Full build + tests: `mvn -q verify`
+  - Module build: `mvn -q -pl <module> -am verify`
+  - Coverage report: `mvn -q jacoco:report`
 - JaCoCo is configured with an 80% LINE coverage rule at the bundle level.
 - Dependencies are centrally managed in the root `dependencyManagement`. Add versions there and import from child modules.
 
@@ -58,6 +59,9 @@ When behaviour intersects these specifications, review the relevant documents an
 - Logging:
   - Keep domain logging minimal; prefer returning rich error information instead of logging internals.
 
+Model B constraint:
+- Vouchers are not redeemable at the mint. Any attempt to use voucher material in melt/swap-like flows must be rejected with a domain-appropriate error. Redemption occurs with the issuing merchant only.
+
 ### Application (`cashu-voucher-app`)
 - Purpose: orchestrate domain use-cases and define port interfaces for infrastructure (e.g., Nostr relay I/O, persistence, clock, entropy).
 - Ports & adapters:
@@ -78,6 +82,14 @@ When behaviour intersects these specifications, review the relevant documents an
   - Manage key derivation and encryption through well-defined services. Do not copy crypto logic from domain; share abstractions where sensible.
 - Resilience:
   - Treat network/relay failures as recoverable. Surface retries and backoff via adapter policies; do not leak transient failures into domain/app layers.
+
+Event kinds and tags (align with README):
+- Public Ledger (NIP-33):
+  - Kind: `30078` (parameterized replaceable)
+  - Tag: `["d", "voucher:<voucherId>"]`
+- Private Backup (NIP-17 + NIP-44):
+  - Kind: `14` (direct message)
+  - Encryption: NIP-44 (ChaCha20-Poly1305)
 
 ## Serialization & Formats
 - JSON and CBOR are used via Jackson. When adding fields:
@@ -117,11 +129,14 @@ When behaviour intersects these specifications, review the relevant documents an
 - The scope of this AGENTS.md is the entire repository. Instructions here apply to all modules.
 - When editing files, keep changes scoped and aligned with the existing structure and naming patterns.
 - If you add new DTOs or protocol-relevant structures, ensure their serializers/deserializers are included and tested.
+ - Cross-reference `README.md` for current module responsibilities, key classes, and CLI commands.
+
+External documentation
+- This repository does not include a `docs/` or `project/` directory. For deeper protocol background and voucher plans, see the documentation in the cashu-lib project referenced from `README.md`.
 
 ## Pre-Submit Checklist
 - Code follows module guidelines above and maintains deterministic behaviour where required.
 - New DTOs or domain types include validation and, if needed, JSON/CBOR mapping updates.
-- Tests cover happy and edge paths, and pass locally via `./mvnw -q verify` with coverage meeting the JaCoCo rule.
+- Tests cover happy and edge paths, and pass locally via `mvn -q verify` with coverage meeting the JaCoCo rule.
 - Documentation (README or module-level docs) is updated for new behaviour.
 - Commits follow Conventional Commits with clear scope and intent.
-
