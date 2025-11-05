@@ -114,24 +114,23 @@
             <artifactId>assertj-core</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Testcontainers -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <excludes>
-                        <!-- Temporarily exclude event mapper tests -->
-                        <!-- These require VoucherSecret JSON object serialization, -->
-                        <!-- but VoucherSecret uses @JsonValue (serializes as string) -->
-                        <!-- Will be fixed in future iteration with proper DTO mappers -->
-                        <exclude>**/VoucherLedgerEventTest.java</exclude>
-                        <exclude>**/VoucherBackupPayloadTest.java</exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
+            <!-- Surefire plugin configuration inherited from parent -->
         </plugins>
     </build>
 
