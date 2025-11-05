@@ -10,7 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 import nostr.base.GenericTagQuery;
 import nostr.event.impl.GenericEvent;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
-import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 import xyz.tcheeric.cashu.voucher.nostr.VoucherNostrException;
 
@@ -109,8 +108,8 @@ public class VoucherLedgerEvent extends GenericEvent {
             throw new IllegalArgumentException("Status cannot be null");
         }
 
-        VoucherSecret secret = voucher.getSecret();
-        String voucherId = secret.getVoucherId();
+        VoucherEventPayloadMapper.VoucherPayload voucherPayload = VoucherEventPayloadMapper.toPayload(voucher);
+        String voucherId = voucherPayload.getVoucherId();
 
         log.debug("Creating VoucherLedgerEvent: voucherId={}, status={}", voucherId, status);
 
@@ -123,11 +122,11 @@ public class VoucherLedgerEvent extends GenericEvent {
         List<List<String>> tagsList = new ArrayList<>();
         tagsList.add(List.of("d", D_TAG_PREFIX + voucherId));
         tagsList.add(List.of(TAG_STATUS, status.name()));
-        tagsList.add(List.of(TAG_AMOUNT, String.valueOf(secret.getFaceValue())));
-        tagsList.add(List.of(TAG_UNIT, secret.getUnit()));
+        tagsList.add(List.of(TAG_AMOUNT, String.valueOf(voucherPayload.getFaceValue())));
+        tagsList.add(List.of(TAG_UNIT, voucherPayload.getUnit()));
 
-        if (secret.getExpiresAt() != null) {
-            tagsList.add(List.of(TAG_EXPIRY, String.valueOf(secret.getExpiresAt())));
+        if (voucherPayload.getExpiresAt() != null) {
+            tagsList.add(List.of(TAG_EXPIRY, String.valueOf(voucherPayload.getExpiresAt())));
         }
 
         // Note: setTags expects List<BaseTag> - conversion handled by repository
@@ -136,7 +135,7 @@ public class VoucherLedgerEvent extends GenericEvent {
 
         // Serialize voucher to JSON content
         try {
-                VoucherContent content = new VoucherContent(voucher, status);
+            VoucherContent content = new VoucherContent(voucherPayload, status);
             String contentJson = objectMapper.writeValueAsString(content);
             event.setContent(contentJson);
             log.debug("Serialized voucher to event content: {} bytes", contentJson.length());
@@ -172,8 +171,8 @@ public class VoucherLedgerEvent extends GenericEvent {
         try {
             VoucherContent voucherContent = objectMapper.readValue(content, VoucherContent.class);
             log.debug("Deserialized voucher from event content");
-            return voucherContent.getVoucher();
-        } catch (JsonProcessingException e) {
+            return VoucherEventPayloadMapper.toDomain(voucherContent.getVoucher());
+        } catch (JsonProcessingException | IllegalArgumentException e) {
             log.error("Failed to deserialize voucher from event content", e);
             throw new VoucherNostrException("Failed to deserialize voucher", e);
         }
@@ -305,12 +304,12 @@ public class VoucherLedgerEvent extends GenericEvent {
     @NoArgsConstructor
     private static class VoucherContent {
         @JsonProperty("voucher")
-        private SignedVoucher voucher;
+        private VoucherEventPayloadMapper.VoucherPayload voucher;
 
         @JsonProperty("status")
         private VoucherStatus status;
 
-        public VoucherContent(SignedVoucher voucher, VoucherStatus status) {
+        public VoucherContent(VoucherEventPayloadMapper.VoucherPayload voucher, VoucherStatus status) {
             this.voucher = voucher;
             this.status = status;
         }
