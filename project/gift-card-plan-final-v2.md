@@ -37,8 +37,8 @@ This separation ensures:
 | Metric | Value |
 |--------|-------|
 | **Total Tasks** | 72 tasks (all required) |
-| **Completed Tasks** | 17 tasks (24%) |
-| **Current Phase** | Phase 2 - Application Layer |
+| **Completed Tasks** | 38 tasks (53%) |
+| **Current Phase** | Phase 4 - Mint Integration |
 | **Estimated Duration** | 5 weeks (25 days) |
 | **Start Date** | TBD |
 | **Target Completion** | TBD |
@@ -60,8 +60,8 @@ This separation ensures:
 ### Key Milestones
 1. ✅ Phase 0 Complete - Project structure ready
 2. ✅ Phase 1 Complete - Domain layer foundation
-3. ⏳ Phase 2 Complete - Application services
-4. ⏳ Phase 3 Complete - Nostr adapter
+3. ✅ Phase 2 Complete - Application services
+4. ✅ Phase 3 Complete - Nostr adapter
 5. ⏳ Phase 4 Complete - Mint integration
 6. ⏳ Phase 5 Complete - Wallet + CLI
 7. ⏳ Phase 6 Complete - Testing & documentation
@@ -75,12 +75,12 @@ This separation ensures:
 |-------|-----------|-------|----------------|--------|
 | **Phase 0** | Project Bootstrap | 6 tasks | 3 days | ✅ Complete (6/6) |
 | **Phase 1** | Domain Layer | 11 tasks | 4 days | ✅ Complete (11/11) |
-| **Phase 2** | Application Layer | 10 tasks | 3 days | Not Started |
-| **Phase 3** | Nostr Layer | 11 tasks | 5 days | Not Started |
+| **Phase 2** | Application Layer | 10 tasks | 3 days | ✅ Complete (10/10) |
+| **Phase 3** | Nostr Layer | 11 tasks | 5 days | ✅ Complete (11/11) |
 | **Phase 4** | Mint Integration | 8 tasks | 3 days | Not Started |
 | **Phase 5** | Wallet & CLI | 14 tasks | 4 days | Not Started |
 | **Phase 6** | Testing & Documentation | 12 tasks | 2 days | Not Started |
-| **Total** | All Phases | **72 tasks** | **24 days** | **24% Complete** |
+| **Total** | All Phases | **72 tasks** | **24 days** | **53% Complete** |
 
 ---
 
@@ -1538,21 +1538,21 @@ public class IssueVoucherCmd extends WalletServiceCommand<Integer> {
 
 | ID | Task | Status | Task Size | Priority | Dependency | Location | Commit | Notes |
 |----|------|--------|-----------|----------|------------|----------|--------|-------|
-| 2.1 | Define VoucherLedgerPort interface | Pending | Small | P0 | Phase 1 | `cashu-voucher-app/src/main/java/.../ports/VoucherLedgerPort.java` | - | publish, queryStatus, updateStatus |
-| 2.2 | Define VoucherBackupPort interface | Pending | Small | P0 | Phase 1 | `cashu-voucher-app/src/main/java/.../ports/VoucherBackupPort.java` | - | backup, restore |
-| 2.3 | Create DTOs | Pending | Medium | P0 | Phase 1 | `cashu-voucher-app/src/main/java/.../dto/` | - | Request/Response classes |
-| 2.4 | Implement VoucherService | Pending | Large | P0 | 2.1, 2.2, 2.3 | `cashu-voucher-app/src/main/java/.../VoucherService.java` | - | Orchestrates use cases |
-| 2.5 | Implement VoucherIssuanceService | Pending | Medium | P0 | 2.4 | `cashu-voucher-app/src/main/java/.../VoucherIssuanceService.java` | - | Mint integration logic |
-| 2.6 | Implement VoucherBackupService | Pending | Medium | P0 | 2.2 | `cashu-voucher-app/src/main/java/.../VoucherBackupService.java` | - | Backup orchestration |
-| 2.7 | Implement MerchantVerificationService | Pending | Large | P0 | 2.1 | `cashu-voucher-app/src/main/java/.../MerchantVerificationService.java` | - | Offline + online verify |
-| 2.8 | Write VoucherService tests | Pending | Large | P1 | 2.4 | `cashu-voucher-app/src/test/java/` | - | 20+ tests with mocked ports |
-| 2.9 | Write MerchantVerificationService tests | Pending | Medium | P1 | 2.7 | `cashu-voucher-app/src/test/java/` | - | 15+ tests: offline/online verify |
-| 2.10 | Write DTO serialization tests | Pending | Small | P1 | 2.3 | `cashu-voucher-app/src/test/java/` | - | 5+ tests: JSON round-trip |
+| 2.1 | Define VoucherLedgerPort interface | ✓ Complete | Small | P0 | Phase 1 | `cashu-voucher-app/src/main/java/.../ports/VoucherLedgerPort.java` | - | publish, queryStatus, updateStatus |
+| 2.2 | Define VoucherBackupPort interface | ✓ Complete | Small | P0 | Phase 1 | `cashu-voucher-app/src/main/java/.../ports/VoucherBackupPort.java` | - | backup, restore |
+| 2.3 | Create DTOs | ✓ Complete | Medium | P0 | Phase 1 | `cashu-voucher-app/src/main/java/.../dto/` | - | Request/Response classes |
+| 2.4 | Implement VoucherService | ✓ Complete | Large | P0 | 2.1, 2.2, 2.3 | `cashu-voucher-app/src/main/java/.../VoucherService.java` | - | Orchestrates use cases |
+| 2.5 | Implement VoucherIssuanceService | ✓ Complete | Medium | P0 | 2.4 | `cashu-voucher-app/src/main/java/.../VoucherIssuanceService.java` | - | Mint integration logic |
+| 2.6 | Implement VoucherBackupService | ✓ Complete | Medium | P0 | 2.2 | `cashu-voucher-app/src/main/java/.../VoucherBackupService.java` | - | Backup orchestration |
+| 2.7 | Implement MerchantVerificationService | ✓ Complete | Large | P0 | 2.1 | `cashu-voucher-app/src/main/java/.../MerchantVerificationService.java` | - | Offline + online verify |
+| 2.8 | Write VoucherService tests | ✓ Complete | Large | P1 | 2.4 | `cashu-voucher-app/src/test/java/` | - | 30+ tests with mocked ports |
+| 2.9 | Write MerchantVerificationService tests | ✓ Complete | Medium | P1 | 2.7 | `cashu-voucher-app/src/test/java/` | - | 29 tests: offline/online verify |
+| 2.10 | Write DTO serialization tests | ✓ Complete | Small | P1 | 2.3 | `cashu-voucher-app/src/test/java/` | - | 13 tests: JSON round-trip |
 
 **Deliverables**:
-- [ ] `cashu-voucher-app-0.1.0.jar`
-- [ ] 40+ service tests passing
-- [ ] Port interfaces defined
+- [x] `cashu-voucher-app-0.1.0.jar`
+- [x] 40+ service tests passing (72 tests total)
+- [x] Port interfaces defined
 
 [↑ Back to top](#table-of-contents)
 
@@ -1562,22 +1562,24 @@ public class IssueVoucherCmd extends WalletServiceCommand<Integer> {
 
 | ID | Task | Status | Task Size | Priority | Dependency | Location | Commit | Notes |
 |----|------|--------|-----------|----------|------------|----------|--------|-------|
-| 3.1 | Implement NostrClientAdapter | Pending | Large | P0 | Phase 2 | `cashu-voucher-nostr/src/main/java/.../NostrClientAdapter.java` | - | Relay connection management |
-| 3.2 | Implement VoucherLedgerEvent | Pending | Medium | P0 | 3.1 | `cashu-voucher-nostr/src/main/java/.../events/VoucherLedgerEvent.java` | - | NIP-33 event mapper |
-| 3.3 | Implement VoucherBackupPayload | Pending | Medium | P0 | 3.1 | `cashu-voucher-nostr/src/main/java/.../events/VoucherBackupPayload.java` | - | NIP-17 payload format |
-| 3.4 | Implement NostrVoucherLedgerRepository | Pending | Large | P0 | 3.1, 3.2 | `cashu-voucher-nostr/src/main/java/.../NostrVoucherLedgerRepository.java` | - | Implements VoucherLedgerPort |
-| 3.5 | Implement NostrVoucherBackupRepository | Pending | Large | P0 | 3.1, 3.3 | `cashu-voucher-nostr/src/main/java/.../NostrVoucherBackupRepository.java` | - | Implements VoucherBackupPort, NIP-44 |
-| 3.6 | Create NostrRelayConfig | Pending | Small | P0 | 3.1 | `cashu-voucher-nostr/src/main/java/.../config/NostrRelayConfig.java` | - | Relay URLs, timeouts |
-| 3.7 | Create MockNostrRelay for testing | Pending | Large | P1 | Phase 2 | `cashu-voucher-nostr/src/test/java/.../MockNostrRelay.java` | - | In-memory relay simulator |
-| 3.8 | Write NostrClientAdapter tests | Pending | Medium | P1 | 3.1, 3.7 | `cashu-voucher-nostr/src/test/java/` | - | 10+ tests: connection, publishing |
-| 3.9 | Write NostrVoucherLedgerRepository tests | Pending | Large | P1 | 3.4, 3.7 | `cashu-voucher-nostr/src/test/java/` | - | 15+ tests: publish, query, update |
-| 3.10 | Write NostrVoucherBackupRepository tests | Pending | Large | P1 | 3.5, 3.7 | `cashu-voucher-nostr/src/test/java/` | - | 15+ tests: backup, restore, encryption |
-| 3.11 | Write event mapper tests | Pending | Medium | P1 | 3.2, 3.3 | `cashu-voucher-nostr/src/test/java/` | - | 10+ tests: domain ↔ Nostr conversion |
+| 3.1 | Implement NostrClientAdapter | ✓ Complete | Large | P0 | Phase 2 | `cashu-voucher-nostr/src/main/java/.../NostrClientAdapter.java` | - | Relay connection management |
+| 3.2 | Implement VoucherLedgerEvent | ✓ Complete | Medium | P0 | 3.1 | `cashu-voucher-nostr/src/main/java/.../events/VoucherLedgerEvent.java` | - | NIP-33 event mapper |
+| 3.3 | Implement VoucherBackupPayload | ✓ Complete | Medium | P0 | 3.1 | `cashu-voucher-nostr/src/main/java/.../events/VoucherBackupPayload.java` | - | NIP-17 payload format |
+| 3.4 | Implement NostrVoucherLedgerRepository | ✓ Complete | Large | P0 | 3.1, 3.2 | `cashu-voucher-nostr/src/main/java/.../NostrVoucherLedgerRepository.java` | - | Implements VoucherLedgerPort |
+| 3.5 | Implement NostrVoucherBackupRepository | ✓ Complete | Large | P0 | 3.1, 3.3 | `cashu-voucher-nostr/src/main/java/.../NostrVoucherBackupRepository.java` | - | Implements VoucherBackupPort, NIP-44 |
+| 3.6 | Create NostrRelayConfig | ✓ Complete | Small | P0 | 3.1 | `cashu-voucher-nostr/src/main/java/.../config/NostrRelayConfig.java` | - | Relay URLs, timeouts |
+| 3.7 | Create Testcontainers relay for testing | ✓ Complete | Large | P1 | Phase 2 | `cashu-voucher-nostr/src/test/java/.../NostrRelayContainer.java` | - | Real nostr-rs-relay via Docker |
+| 3.8 | Write NostrClientAdapter tests | ✓ Complete | Medium | P1 | 3.1, 3.7 | `cashu-voucher-nostr/src/test/java/` | - | 17 unit tests + 5 integration tests |
+| 3.9 | Write NostrVoucherLedgerRepository tests | ✓ Complete | Large | P1 | 3.4, 3.7 | `cashu-voucher-nostr/src/test/java/` | - | 44 tests: publish, query, update |
+| 3.10 | Write NostrVoucherBackupRepository tests | ✓ Complete | Large | P1 | 3.5, 3.7 | `cashu-voucher-nostr/src/test/java/` | - | 29 tests: backup, restore, encryption |
+| 3.11 | Write event mapper tests | ✓ Complete | Medium | P1 | 3.2, 3.3 | `cashu-voucher-nostr/src/test/java/` | - | VoucherLedgerEventTest + VoucherBackupPayloadTest, fixed hex128ToBytes issue |
 
 **Deliverables**:
-- [ ] `cashu-voucher-nostr-0.1.0.jar`
-- [ ] 40+ integration tests passing
-- [ ] Mock Nostr relay for testing
+- [x] `cashu-voucher-nostr-0.1.0.jar`
+- [x] 40+ integration tests passing (112 tests total)
+- [x] Testcontainers Nostr relay for testing (nostr-rs-relay)
+- [x] NIP-33 + NIP-17 + NIP-44 implemented
+- [x] Fixed BouncyCastle direct usage, using nostr-java utilities
 
 [↑ Back to top](#table-of-contents)
 
@@ -1740,14 +1742,16 @@ public class IssueVoucherCmd extends WalletServiceCommand<Integer> {
 - [x] 80%+ code coverage (achieved: 80% line, 78% instruction)
 
 **Phase 2 Complete**:
-- [ ] cashu-voucher-app-0.1.0 published
-- [ ] Port interfaces defined
-- [ ] 40+ service tests passing
+- [x] cashu-voucher-app-0.1.0 published
+- [x] Port interfaces defined
+- [x] 40+ service tests passing (72 tests total)
 
 **Phase 3 Complete**:
-- [ ] cashu-voucher-nostr-0.1.0 published
-- [ ] NIP-33 + NIP-17 implemented
-- [ ] 40+ integration tests passing
+- [x] cashu-voucher-nostr-0.1.0 published
+- [x] NIP-33 + NIP-17 + NIP-44 implemented
+- [x] 40+ integration tests passing (112 tests total)
+- [x] Testcontainers integration testing
+- [x] Fixed nostr-java hex conversion issues
 
 **Phase 4 Complete**:
 - [ ] Mint voucher API working
@@ -1909,13 +1913,15 @@ VoucherService service = new VoucherService(
 | 1.0 | 2025-11-04 | Initial plan with multi-module architecture | TBD |
 | 1.1 | 2025-11-04 | Added comprehensive task tables similar to NUT-13 plan | TBD |
 | 1.2 | 2025-11-04 | Added Phase Summary and Project Summary sections | TBD |
+| 1.3 | 2025-11-05 | Updated Phase 3 progress: Testcontainers, hex128ToBytes fix, test infrastructure complete | TBD |
+| 1.4 | 2025-11-05 | Phases 2 & 3 complete: Application layer (72 tests) and Nostr layer (112 tests) finished | TBD |
 
 ---
 
 **Document Status**: ✅ Final v2 - Implementation In Progress
-**Last Updated**: 2025-11-04
+**Last Updated**: 2025-11-05
 **Architecture**: Hexagonal (Ports & Adapters)
-**Total Tasks**: 72 (24% complete - 17/72)
-**Progress**: Phase 1 complete (11/11 tasks), entering Phase 2
-**Latest Milestone**: Phase 1 - Domain Layer complete (126 tests, 80% coverage)
-**Next Action**: Phase 2.1 - Define VoucherLedgerPort interface
+**Total Tasks**: 72 (53% complete - 38/72)
+**Progress**: Phases 0-3 complete (38/38 tasks), entering Phase 4
+**Latest Milestone**: Phase 3 - Nostr Layer complete (NIP-33, NIP-17, NIP-44, 112 tests)
+**Next Action**: Phase 4.1 - Add cashu-voucher dependencies to cashu-mint
