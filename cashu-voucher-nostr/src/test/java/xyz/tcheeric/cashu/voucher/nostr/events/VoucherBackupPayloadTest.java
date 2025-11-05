@@ -1,6 +1,7 @@
 package xyz.tcheeric.cashu.voucher.nostr.events;
 
 import nostr.event.impl.GenericEvent;
+import nostr.id.Identity;
 import org.junit.jupiter.api.*;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
@@ -24,11 +25,12 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>To re-enable: Create DTO mappers in the Nostr layer that handle the conversion properly.
  */
-@Disabled("Requires VoucherSecret JSON object serialization - needs DTO mappers")
 class VoucherBackupPayloadTest {
 
-    private static final String TEST_USER_PRIVKEY = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-    private static final String TEST_USER_PUBKEY = "9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba";
+    private static final String TEST_USER_PRIVKEY = "c56c7162b49d38e3b14583271ec177617d1bda7cb5415421e50d71d6c3e13446";
+    // Derive public key using nostr-java Identity
+    private static final String TEST_USER_PUBKEY = Identity.create(TEST_USER_PRIVKEY).getPublicKey().toString();
+
     private static final String TEST_ISSUER_PRIVKEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     private static final String TEST_ISSUER_PUBKEY = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
     private static final String ISSUER_ID = "test-merchant";

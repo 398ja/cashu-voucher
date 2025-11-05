@@ -9,14 +9,18 @@ import lombok.NoArgsConstructor;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import nostr.base.Kind;
+import nostr.base.PrivateKey;
 import nostr.base.PublicKey;
-import nostr.encryption.MessageCipher44;
+import nostr.crypto.Point;
+import nostr.crypto.nip44.EncryptedPayloads;
 import nostr.event.BaseTag;
 import nostr.event.impl.GenericEvent;
+import nostr.id.Identity;
 import nostr.util.NostrUtil;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.nostr.VoucherNostrException;
 
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -101,6 +105,7 @@ public class VoucherBackupPayload {
     public static final String TAG_BACKUP = "backup";
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     /**
      * Creates an encrypted backup event for vouchers.
@@ -142,7 +147,7 @@ public class VoucherBackupPayload {
 
         for (SignedVoucher voucher : vouchers) {
             VoucherBackupEntry entry = new VoucherBackupEntry();
-            entry.setVoucher(voucher);
+            entry.setVoucher(VoucherEventPayloadMapper.toPayload(voucher));
             entry.setBackedUpAt(backupTimestamp);
             entries.add(entry);
         }
@@ -165,15 +170,19 @@ public class VoucherBackupPayload {
         }
 
         // Encrypt with NIP-44
+        // Note: EncryptedPayloads.getConversationKey requires uncompressed pubkey (04 prefix + X + Y)
         String encryptedContent;
         try {
-            // Convert hex keys to byte arrays
-            byte[] privKeyBytes = NostrUtil.hexToBytes(userPrivkey);
-            byte[] pubKeyBytes = NostrUtil.hexToBytes(userPubkey);
+            PublicKey recipientPubKey = new PublicKey(userPubkey);
+            // Get raw x-only bytes (32 bytes) and convert to uncompressed format for NIP-44
+            byte[] xOnlyBytes = recipientPubKey.getRawData();
+            String uncompressedHex = convertXOnlyToUncompressed(xOnlyBytes);
 
-            // Create cipher and encrypt
-            MessageCipher44 cipher = new MessageCipher44(privKeyBytes, pubKeyBytes);
-            encryptedContent = cipher.encrypt(payloadJson);
+            byte[] conversationKey = EncryptedPayloads.getConversationKey(userPrivkey, uncompressedHex);
+            byte[] nonce = new byte[32];
+            SECURE_RANDOM.nextBytes(nonce);
+
+            encryptedContent = EncryptedPayloads.encrypt(payloadJson, conversationKey, nonce);
             log.debug("Encrypted payload with NIP-44: {} bytes", encryptedContent.length());
         } catch (Exception e) {
             log.error("Failed to encrypt backup payload", e);
@@ -195,6 +204,38 @@ public class VoucherBackupPayload {
 
         log.info("Created backup event: {} vouchers encrypted", vouchers.size());
         return event;
+    }
+
+    /**
+     * Converts x-only (32 byte) public key to uncompressed format (130 hex chars) required by NIP-44.
+     * Uses nostr-java's Point.liftX to reconstruct the full EC point (assumes even Y coordinate per BIP340).
+     */
+    private static String convertXOnlyToUncompressed(byte[] xOnlyBytes) {
+        if (xOnlyBytes.length != 32) {
+            throw new IllegalArgumentException("Expected 32-byte x-only public key, got " + xOnlyBytes.length);
+        }
+
+        // Lift x-only key to full EC point using nostr-java's Point class
+        Point point = Point.liftX(xOnlyBytes);
+
+        // Convert to uncompressed format: 0x04 + X (32 bytes) + Y (32 bytes)
+        byte[] uncompressed = new byte[65];
+        uncompressed[0] = 0x04; // Uncompressed point prefix
+
+        byte[] xBytes = point.getX().toByteArray();
+        byte[] yBytes = point.getY().toByteArray();
+
+        // Copy X coordinate (handle leading zeros or sign byte)
+        int xStart = xBytes.length > 32 ? xBytes.length - 32 : 0;
+        int xDest = xBytes.length >= 32 ? 1 : 1 + (32 - xBytes.length);
+        System.arraycopy(xBytes, xStart, uncompressed, xDest, Math.min(xBytes.length, 32));
+
+        // Copy Y coordinate (handle leading zeros or sign byte)
+        int yStart = yBytes.length > 32 ? yBytes.length - 32 : 0;
+        int yDest = yBytes.length >= 32 ? 33 : 33 + (32 - yBytes.length);
+        System.arraycopy(yBytes, yStart, uncompressed, yDest, Math.min(yBytes.length, 32));
+
+        return NostrUtil.bytesToHex(uncompressed);
     }
 
     /**
@@ -241,13 +282,12 @@ public class VoucherBackupPayload {
         // Decrypt with NIP-44
         String decryptedJson;
         try {
-            // Convert hex keys to byte arrays
-            byte[] privKeyBytes = NostrUtil.hexToBytes(userPrivkey);
-            byte[] pubKeyBytes = NostrUtil.hexToBytes(userPubkey);
+            PublicKey recipientPubKey = new PublicKey(userPubkey);
+            byte[] xOnlyBytes = recipientPubKey.getRawData();
+            String uncompressedHex = convertXOnlyToUncompressed(xOnlyBytes);
 
-            // Create cipher and decrypt
-            MessageCipher44 cipher = new MessageCipher44(privKeyBytes, pubKeyBytes);
-            decryptedJson = cipher.decrypt(encryptedContent);
+            byte[] conversationKey = EncryptedPayloads.getConversationKey(userPrivkey, uncompressedHex);
+            decryptedJson = EncryptedPayloads.decrypt(encryptedContent, conversationKey);
             log.debug("Decrypted payload: {} bytes", decryptedJson.length());
         } catch (Exception e) {
             log.error("Failed to decrypt backup payload", e);
@@ -274,7 +314,11 @@ public class VoucherBackupPayload {
         List<SignedVoucher> vouchers = new ArrayList<>();
         if (payload.getVouchers() != null) {
             for (VoucherBackupEntry entry : payload.getVouchers()) {
-                vouchers.add(entry.getVoucher());
+                try {
+                    vouchers.add(VoucherEventPayloadMapper.toDomain(entry.getVoucher()));
+                } catch (IllegalArgumentException ex) {
+                    throw new VoucherNostrException("Failed to reconstruct voucher from backup entry", ex);
+                }
             }
         }
 
@@ -323,7 +367,7 @@ public class VoucherBackupPayload {
     @AllArgsConstructor
     private static class VoucherBackupEntry {
         @JsonProperty("voucher")
-        private SignedVoucher voucher;
+        private VoucherEventPayloadMapper.VoucherPayload voucher;
 
         @JsonProperty("backedUpAt")
         private Long backedUpAt;
