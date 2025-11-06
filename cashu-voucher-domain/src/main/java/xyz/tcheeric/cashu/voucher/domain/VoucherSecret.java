@@ -1,6 +1,6 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
-import com.fasterxml.jackson.annotation.JsonValue;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NonNull;
@@ -35,12 +35,16 @@ import java.util.UUID;
  * to ensure deterministic byte representation for ED25519 signature generation. Field ordering
  * is alphabetical to guarantee consistency.
  *
+ * <p>Jackson JSON serialization uses {@link VoucherSecretSerializer} to serialize as hex string.
+ *
  * @see SignedVoucher
  * @see VoucherSignatureService
+ * @see VoucherSecretSerializer
  * @see <a href="https://github.com/cashubtc/nuts">Cashu NUTs Specification</a>
  */
 @Getter
 @EqualsAndHashCode(callSuper = false)
+@JsonSerialize(using = VoucherSecretSerializer.class)
 public final class VoucherSecret extends BaseKey implements Secret {
 
     /**
@@ -212,11 +216,11 @@ public final class VoucherSecret extends BaseKey implements Secret {
     /**
      * Returns hex-encoded canonical representation.
      *
-     * <p>This is the serialization format used in Cashu tokens and for JSON serialization.
+     * <p>This is the serialization format used in Cashu tokens.
+     * For JSON serialization, see {@link VoucherSecretSerializer}.
      *
      * @return hex-encoded string of canonical CBOR bytes
      */
-    @JsonValue
     public String toHexString() {
         return Hex.toHexString(toCanonicalBytes());
     }
@@ -272,6 +276,8 @@ public final class VoucherSecret extends BaseKey implements Secret {
 
     /**
      * Returns hex-encoded string representation.
+     *
+     * <p>Note: JSON serialization uses {@link VoucherSecretSerializer} instead.
      *
      * @return hex string for display/logging (without sensitive data)
      */
