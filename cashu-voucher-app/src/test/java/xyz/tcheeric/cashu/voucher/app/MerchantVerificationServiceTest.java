@@ -612,4 +612,305 @@ class MerchantVerificationServiceTest {
             ).isInstanceOf(UnsupportedOperationException.class);
         }
     }
+
+    /**
+     * End-to-end tests for merchant voucher verification workflow.
+     *
+     * <p>These tests verify the complete flow of merchant verification,
+     * from receiving a voucher to verifying it offline and online.
+     */
+    @Nested
+    @DisplayName("E2E Merchant Verification Tests")
+    class E2EMerchantVerificationTests {
+
+        /**
+         * E2E Test: Complete offline verification workflow.
+         *
+         * <p>This test demonstrates the full offline verification flow:
+         * <ol>
+         *   <li>Merchant receives a voucher from customer</li>
+         *   <li>Merchant verifies voucher signature (offline)</li>
+         *   <li>Merchant checks expiry (offline)</li>
+         *   <li>Merchant confirms issuer matches (offline)</li>
+         *   <li>Verification succeeds without network access</li>
+         * </ol>
+         *
+         * <p>This satisfies part of task 6.4: "Write E2E test: Merchant verify"
+         */
+        @Test
+        @DisplayName("E2E: Complete offline verification workflow")
+        void e2eTest_CompleteOfflineVerificationWorkflow() {
+            // ========== STEP 1: Customer presents voucher to merchant ==========
+            // Simulate a customer presenting a valid voucher to a merchant
+            SignedVoucher customerVoucher = createValidVoucher(ISSUER_ID);
+
+            // Verify voucher has valid properties
+            assertThat(customerVoucher.getSecret().getIssuerId()).isEqualTo(ISSUER_ID);
+            assertThat(customerVoucher.getSecret().getFaceValue()).isEqualTo(AMOUNT);
+            assertThat(customerVoucher.getSecret().getUnit()).isEqualTo(UNIT);
+
+            // ========== STEP 2: Merchant performs offline verification ==========
+            // Merchant verifies without network access
+            MerchantVerificationService.VerificationResult result =
+                    service.verifyOffline(customerVoucher, ISSUER_ID);
+
+            // ========== STEP 3: Verify signature is valid ==========
+            assertThat(result.isValid())
+                    .as("Voucher signature should be valid")
+                    .isTrue();
+
+            // ========== STEP 4: Verify no errors ==========
+            assertThat(result.getErrors())
+                    .as("No validation errors should occur")
+                    .isEmpty();
+
+            // ========== STEP 5: Verify voucher properties match ==========
+            assertThat(customerVoucher.getSecret().getIssuerId())
+                    .as("Issuer ID should match merchant")
+                    .isEqualTo(ISSUER_ID);
+
+            assertThat(customerVoucher.isExpired())
+                    .as("Voucher should not be expired")
+                    .isFalse();
+
+            assertThat(customerVoucher.verify())
+                    .as("Voucher signature should be cryptographically valid")
+                    .isTrue();
+
+            // ========== STEP 6: Merchant can accept voucher ==========
+            // At this point, merchant knows voucher is valid offline
+            // and can proceed with redemption
+            assertThat(result.isValid()).isTrue();
+        }
+
+        /**
+         * E2E Test: Complete online verification workflow.
+         *
+         * <p>This test demonstrates the full online verification flow:
+         * <ol>
+         *   <li>Merchant receives a voucher from customer</li>
+         *   <li>Merchant performs offline checks first</li>
+         *   <li>Merchant queries Nostr ledger for voucher status</li>
+         *   <li>Merchant confirms voucher is ISSUED (not already redeemed)</li>
+         *   <li>Verification succeeds with ledger confirmation</li>
+         * </ol>
+         */
+        @Test
+        @DisplayName("E2E: Complete online verification workflow")
+        void e2eTest_CompleteOnlineVerificationWorkflow() {
+            // ========== STEP 1: Customer presents voucher ==========
+            SignedVoucher customerVoucher = createValidVoucher(ISSUER_ID);
+            String voucherId = customerVoucher.getSecret().getVoucherId();
+
+            // ========== STEP 2: Mock Nostr ledger response ==========
+            // Simulate Nostr ledger confirming voucher is ISSUED
+            when(ledgerPort.queryStatus(voucherId))
+                    .thenReturn(Optional.of(VoucherStatus.ISSUED));
+
+            // ========== STEP 3: Merchant performs online verification ==========
+            MerchantVerificationService.VerificationResult result =
+                    service.verifyOnline(customerVoucher, ISSUER_ID);
+
+            // ========== STEP 4: Verify offline checks passed ==========
+            assertThat(result.isValid())
+                    .as("Online verification should succeed")
+                    .isTrue();
+            assertThat(result.getErrors()).isEmpty();
+
+            // ========== STEP 5: Verify ledger was queried ==========
+            verify(ledgerPort, times(1))
+                    .queryStatus(voucherId);
+
+            // ========== STEP 6: Verify voucher status is ISSUED ==========
+            Optional<VoucherStatus> ledgerStatus = ledgerPort.queryStatus(voucherId);
+            assertThat(ledgerStatus)
+                    .as("Ledger should return voucher status")
+                    .isPresent();
+            assertThat(ledgerStatus.get())
+                    .as("Voucher should be in ISSUED state")
+                    .isEqualTo(VoucherStatus.ISSUED);
+
+            // ========== STEP 7: Merchant can safely accept voucher ==========
+            // Voucher passed both offline and online checks
+            assertThat(result.isValid()).isTrue();
+        }
+
+        /**
+         * E2E Test: Merchant rejects double-spend attempt.
+         *
+         * <p>This test verifies that merchants can detect when a voucher
+         * has already been redeemed (double-spend protection via Nostr ledger).
+         */
+        @Test
+        @DisplayName("E2E: Merchant detects and rejects double-spend attempt")
+        void e2eTest_MerchantRejectsDoubleSpend() {
+            // ========== STEP 1: Customer attempts to use already-redeemed voucher ==========
+            SignedVoucher alreadyRedeemedVoucher = createValidVoucher(ISSUER_ID);
+            String voucherId = alreadyRedeemedVoucher.getSecret().getVoucherId();
+
+            // ========== STEP 2: Nostr ledger shows voucher was already redeemed ==========
+            when(ledgerPort.queryStatus(voucherId))
+                    .thenReturn(Optional.of(VoucherStatus.REDEEMED));
+
+            // ========== STEP 3: Merchant performs online verification ==========
+            MerchantVerificationService.VerificationResult result =
+                    service.verifyOnline(alreadyRedeemedVoucher, ISSUER_ID);
+
+            // ========== STEP 4: Verification fails ==========
+            assertThat(result.isValid())
+                    .as("Double-spend attempt should be rejected")
+                    .isFalse();
+
+            // ========== STEP 5: Error indicates double-spend ==========
+            assertThat(result.getErrors())
+                    .as("Should have double-spend error")
+                    .hasSize(1);
+            assertThat(result.getErrorMessage())
+                    .as("Error should mention voucher already redeemed")
+                    .containsIgnoringCase("already redeemed")
+                    .containsIgnoringCase("double-spend");
+
+            // ========== STEP 6: Merchant rejects transaction ==========
+            verify(ledgerPort, times(1)).queryStatus(voucherId);
+            assertThat(result.isValid()).isFalse();
+        }
+
+        /**
+         * E2E Test: Merchant rejects expired voucher.
+         *
+         * <p>This test verifies that merchants properly reject expired vouchers
+         * during offline verification.
+         */
+        @Test
+        @DisplayName("E2E: Merchant rejects expired voucher")
+        void e2eTest_MerchantRejectsExpiredVoucher() {
+            // ========== STEP 1: Customer presents expired voucher ==========
+            SignedVoucher expiredVoucher = createExpiredVoucher(ISSUER_ID);
+
+            // Verify voucher is actually expired
+            assertThat(expiredVoucher.isExpired())
+                    .as("Test voucher should be expired")
+                    .isTrue();
+
+            // ========== STEP 2: Merchant performs offline verification ==========
+            MerchantVerificationService.VerificationResult result =
+                    service.verifyOffline(expiredVoucher, ISSUER_ID);
+
+            // ========== STEP 3: Verification fails ==========
+            assertThat(result.isValid())
+                    .as("Expired voucher should be rejected")
+                    .isFalse();
+
+            // ========== STEP 4: Error indicates expiry ==========
+            assertThat(result.getErrors())
+                    .as("Should have expiry error")
+                    .isNotEmpty();
+            assertThat(result.getErrorMessage())
+                    .as("Error should mention expiry")
+                    .containsIgnoringCase("expired");
+
+            // ========== STEP 5: Merchant rejects transaction ==========
+            assertThat(result.isValid()).isFalse();
+        }
+
+        /**
+         * E2E Test: Merchant rejects voucher from different issuer.
+         *
+         * <p>This test verifies Model B enforcement: merchants only accept
+         * vouchers they themselves issued.
+         */
+        @Test
+        @DisplayName("E2E: Merchant rejects voucher from different issuer (Model B)")
+        void e2eTest_MerchantRejectsWrongIssuer() {
+            // ========== STEP 1: Customer presents voucher from different merchant ==========
+            String differentIssuer = "other-merchant-456";
+            SignedVoucher otherMerchantVoucher = createValidVoucher(differentIssuer);
+
+            // Verify voucher is for a different issuer
+            assertThat(otherMerchantVoucher.getSecret().getIssuerId())
+                    .as("Voucher should be from different issuer")
+                    .isNotEqualTo(ISSUER_ID);
+
+            // ========== STEP 2: Merchant performs offline verification ==========
+            // Merchant checks if voucher is for their store (ISSUER_ID)
+            MerchantVerificationService.VerificationResult result =
+                    service.verifyOffline(otherMerchantVoucher, ISSUER_ID);
+
+            // ========== STEP 3: Verification fails (Model B enforcement) ==========
+            assertThat(result.isValid())
+                    .as("Voucher from different issuer should be rejected")
+                    .isFalse();
+
+            // ========== STEP 4: Error indicates wrong issuer ==========
+            assertThat(result.getErrors())
+                    .as("Should have issuer mismatch error")
+                    .isNotEmpty();
+            assertThat(result.getErrorMessage())
+                    .as("Error should mention wrong merchant")
+                    .containsIgnoringCase("merchant")
+                    .containsIgnoringCase("issuer");
+
+            // ========== STEP 5: Merchant rejects transaction ==========
+            // This is Model B in action: voucher can only be used at issuing merchant
+            assertThat(result.isValid()).isFalse();
+        }
+
+        /**
+         * E2E Test: Complete redemption workflow.
+         *
+         * <p>This test demonstrates the full redemption flow from verification to marking redeemed:
+         * <ol>
+         *   <li>Merchant verifies voucher (offline and online)</li>
+         *   <li>Merchant marks voucher as redeemed in Nostr ledger</li>
+         *   <li>Merchant provides goods/services to customer</li>
+         * </ol>
+         */
+        @Test
+        @DisplayName("E2E: Complete verification and redemption workflow")
+        void e2eTest_CompleteVerificationAndRedemption() {
+            // ========== STEP 1: Customer presents valid voucher ==========
+            SignedVoucher voucher = createValidVoucher(ISSUER_ID);
+            String voucherId = voucher.getSecret().getVoucherId();
+
+            // ========== STEP 2: Merchant verifies online ==========
+            when(ledgerPort.queryStatus(voucherId))
+                    .thenReturn(Optional.of(VoucherStatus.ISSUED));
+
+            MerchantVerificationService.VerificationResult verifyResult =
+                    service.verifyOnline(voucher, ISSUER_ID);
+
+            assertThat(verifyResult.isValid())
+                    .as("Verification should succeed")
+                    .isTrue();
+
+            // ========== STEP 3: Merchant redeems voucher ==========
+            RedeemVoucherRequest redeemRequest = RedeemVoucherRequest.builder()
+                    .merchantId(ISSUER_ID)
+                    .build();
+
+            doNothing().when(ledgerPort).updateStatus(eq(voucherId), eq(VoucherStatus.REDEEMED));
+
+            RedeemVoucherResponse redeemResponse = service.redeem(redeemRequest, voucher);
+
+            // ========== STEP 4: Verify redemption succeeded ==========
+            assertThat(redeemResponse.isSuccess())
+                    .as("Redemption should succeed")
+                    .isTrue();
+            assertThat(redeemResponse.getVoucherId())
+                    .as("Response should include voucher ID")
+                    .isEqualTo(voucherId);
+            assertThat(redeemResponse.getAmount())
+                    .as("Response should include voucher amount")
+                    .isEqualTo(AMOUNT);
+
+            // ========== STEP 5: Verify ledger was updated ==========
+            verify(ledgerPort, times(1))
+                    .updateStatus(voucherId, VoucherStatus.REDEEMED);
+
+            // ========== STEP 6: Merchant provides goods/services ==========
+            // At this point, voucher is marked redeemed in Nostr ledger
+            // and merchant can safely provide goods/services
+            assertThat(redeemResponse.isSuccess()).isTrue();
+        }
+    }
 }
