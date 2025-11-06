@@ -87,4 +87,41 @@
         </dependency>
     </dependencies>
 
+    <repositories>
+        <repository>
+            <id>maven-398ja-xyz</id>
+            <name>398ja Maven Repository</name>
+            <url>https://maven.398ja.xyz/releases</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>maven-398ja-xyz-snapshots</id>
+            <name>398ja Maven Snapshots Repository</name>
+            <url>https://maven.398ja.xyz/snapshots</url>
+            <releases>
+                <enabled>false</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
+    <distributionManagement>
+        <repository>
+            <id>maven-398ja-xyz</id>
+            <name>398ja Maven Releases Repository</name>
+            <url>https://maven.398ja.xyz/releases</url>
+        </repository>
+        <snapshotRepository>
+            <id>maven-398ja-xyz-snapshots</id>
+            <name>398ja Maven Snapshots Repository</name>
+            <url>https://maven.398ja.xyz/snapshots</url>
+        </snapshotRepository>
+    </distributionManagement>
 </project>
