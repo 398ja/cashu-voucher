@@ -371,7 +371,7 @@
 
     <repositories>
         <repository>
-            <id>maven-398ja-xyz</id>
+            <id>reposilite-releases</id>
             <name>398ja Maven Repository</name>
             <url>https://maven.398ja.xyz/releases</url>
             <releases>
@@ -382,7 +382,7 @@
             </snapshots>
         </repository>
         <repository>
-            <id>maven-398ja-xyz-snapshots</id>
+            <id>reposilite-snapshots</id>
             <name>398ja Maven Snapshots Repository</name>
             <url>https://maven.398ja.xyz/snapshots</url>
             <releases>
@@ -396,12 +396,12 @@
 
     <distributionManagement>
         <repository>
-            <id>maven-398ja-xyz</id>
+            <id>reposilite-releases</id>
             <name>398ja Maven Releases Repository</name>
             <url>https://maven.398ja.xyz/releases</url>
         </repository>
         <snapshotRepository>
-            <id>maven-398ja-xyz-snapshots</id>
+            <id>reposilite-snapshots</id>
             <name>398ja Maven Snapshots Repository</name>
             <url>https://maven.398ja.xyz/snapshots</url>
         </snapshotRepository>
