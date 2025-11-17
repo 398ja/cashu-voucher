@@ -17,10 +17,12 @@ import nostr.event.BaseTag;
 import nostr.event.impl.GenericEvent;
 import nostr.id.Identity;
 import nostr.util.NostrUtil;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.nostr.VoucherNostrException;
 
 import java.security.SecureRandom;
+import java.security.Security;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -106,6 +108,11 @@ public class VoucherBackupPayload {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    static {
+        // Ensure BC provider handles ChaCha20 with IvParameterSpec per NIP-44
+        Security.removeProvider(BouncyCastleProvider.PROVIDER_NAME);
+        Security.insertProviderAt(new BouncyCastleProvider(), 1);
+    }
 
     /**
      * Creates an encrypted backup event for vouchers.
