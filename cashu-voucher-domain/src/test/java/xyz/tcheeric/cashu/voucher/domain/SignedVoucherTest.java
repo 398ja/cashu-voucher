@@ -31,8 +31,11 @@ class SignedVoucherTest {
     private static String issuerPrivateKeyHex;
     private static String issuerPublicKeyHex;
     private static final String ISSUER_ID = "merchant123";
-    private static final String UNIT = "sat";
-    private static final long FACE_VALUE = 10000L;
+    private static final String UNIT = "EUR";
+    private static final long FACE_VALUE = 1000L; // €10.00 in cents
+    private static final BackingStrategy DEFAULT_STRATEGY = BackingStrategy.PROPORTIONAL;
+    private static final double DEFAULT_ISSUANCE_RATIO = 0.01; // €0.01 per sat
+    private static final int DEFAULT_FACE_DECIMALS = 2; // EUR has 2 decimal places
 
     @BeforeAll
     static void setupKeys() {
@@ -48,13 +51,35 @@ class SignedVoucherTest {
         issuerPublicKeyHex = Hex.toHexString(publicKeyBytes);
     }
 
+    /**
+     * Helper method to create a VoucherSecret with default backing strategy parameters.
+     */
+    private VoucherSecret createVoucherSecret(String issuerId, String unit, long faceValue,
+                                              Long expiresAt, String memo) {
+        return VoucherSecret.create(
+                issuerId, unit, faceValue, expiresAt, memo,
+                DEFAULT_STRATEGY, DEFAULT_ISSUANCE_RATIO, DEFAULT_FACE_DECIMALS, null
+        );
+    }
+
+    /**
+     * Helper method to create a VoucherSecret with specified voucher ID.
+     */
+    private VoucherSecret createVoucherSecretWithId(String voucherId, String issuerId, String unit,
+                                                    long faceValue, Long expiresAt, String memo) {
+        return VoucherSecret.create(
+                voucherId, issuerId, unit, faceValue, expiresAt, memo,
+                DEFAULT_STRATEGY, DEFAULT_ISSUANCE_RATIO, DEFAULT_FACE_DECIMALS, null
+        );
+    }
+
     private SignedVoucher createValidVoucher() {
-        VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+        VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
         return VoucherSignatureService.createSigned(secret, issuerPrivateKeyHex, issuerPublicKeyHex);
     }
 
     private SignedVoucher createValidVoucherWithExpiry(Long expiresAt) {
-        VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, expiresAt, null);
+        VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, expiresAt, null);
         return VoucherSignatureService.createSigned(secret, issuerPrivateKeyHex, issuerPublicKeyHex);
     }
 
@@ -62,11 +87,14 @@ class SignedVoucherTest {
     @DisplayName("Creation")
     class Creation {
 
+        /**
+         * Tests that a signed voucher can be created with valid parameters.
+         */
         @Test
         @DisplayName("should create signed voucher with valid parameters")
         void shouldCreateSignedVoucherWithValidParameters() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] signature = VoucherSignatureService.sign(secret, issuerPrivateKeyHex);
 
             // When
@@ -79,6 +107,9 @@ class SignedVoucherTest {
             assertThat(voucher.getIssuerPublicKey()).isEqualTo(issuerPublicKeyHex);
         }
 
+        /**
+         * Tests that null secret is rejected.
+         */
         @Test
         @DisplayName("should reject null secret")
         void shouldRejectNullSecret() {
@@ -90,22 +121,28 @@ class SignedVoucherTest {
                     .isInstanceOf(NullPointerException.class);
         }
 
+        /**
+         * Tests that null signature is rejected.
+         */
         @Test
         @DisplayName("should reject null signature")
         void shouldRejectNullSignature() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
 
             // When / Then
             assertThatThrownBy(() -> new SignedVoucher(secret, null, issuerPublicKeyHex))
                     .isInstanceOf(NullPointerException.class);
         }
 
+        /**
+         * Tests that null public key is rejected.
+         */
         @Test
         @DisplayName("should reject null public key")
         void shouldRejectNullPublicKey() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] signature = new byte[64];
 
             // When / Then
@@ -113,11 +150,14 @@ class SignedVoucherTest {
                     .isInstanceOf(NullPointerException.class);
         }
 
+        /**
+         * Tests that blank public key is rejected.
+         */
         @Test
         @DisplayName("should reject blank public key")
         void shouldRejectBlankPublicKey() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] signature = new byte[64];
 
             // When / Then
@@ -126,11 +166,14 @@ class SignedVoucherTest {
                     .hasMessageContaining("public key cannot be blank");
         }
 
+        /**
+         * Tests that invalid signature length is rejected.
+         */
         @Test
         @DisplayName("should reject invalid signature length")
         void shouldRejectInvalidSignatureLength() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] invalidSignature = new byte[32]; // Wrong length (should be 64)
 
             // When / Then
@@ -140,11 +183,14 @@ class SignedVoucherTest {
                     .hasMessageContaining("expected 64 bytes");
         }
 
+        /**
+         * Tests that 64-byte signature is accepted.
+         */
         @Test
         @DisplayName("should accept 64-byte signature")
         void shouldAccept64ByteSignature() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] signature = new byte[64]; // Correct length
 
             // When / Then
@@ -156,6 +202,9 @@ class SignedVoucherTest {
     @DisplayName("Signature Verification")
     class SignatureVerification {
 
+        /**
+         * Tests that a valid signature is verified successfully.
+         */
         @Test
         @DisplayName("should verify valid signature")
         void shouldVerifyValidSignature() {
@@ -166,11 +215,14 @@ class SignedVoucherTest {
             assertThat(voucher.verify()).isTrue();
         }
 
+        /**
+         * Tests that an invalid signature is rejected.
+         */
         @Test
         @DisplayName("should reject invalid signature")
         void shouldRejectInvalidSignature() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] invalidSignature = new byte[64]; // All zeros - invalid
             SignedVoucher voucher = new SignedVoucher(secret, invalidSignature, issuerPublicKeyHex);
 
@@ -178,11 +230,14 @@ class SignedVoucherTest {
             assertThat(voucher.verify()).isFalse();
         }
 
+        /**
+         * Tests that a signature from the wrong key is rejected.
+         */
         @Test
         @DisplayName("should reject signature from wrong key")
         void shouldRejectSignatureFromWrongKey() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
 
             // Generate another key pair
             SecureRandom random = new SecureRandom();
@@ -198,11 +253,14 @@ class SignedVoucherTest {
             assertThat(voucher.verify()).isFalse();
         }
 
+        /**
+         * Tests that a modified voucher secret is detected.
+         */
         @Test
         @DisplayName("should detect modified voucher secret")
         void shouldDetectModifiedVoucherSecret() {
             // Given
-            VoucherSecret originalSecret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret originalSecret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] signature = VoucherSignatureService.sign(originalSecret, issuerPrivateKeyHex);
 
             // Create a different secret with modified face value
@@ -212,6 +270,43 @@ class SignedVoucherTest {
                     UNIT,
                     FACE_VALUE + 1000, // Modified value
                     null,
+                    null,
+                    DEFAULT_STRATEGY,
+                    DEFAULT_ISSUANCE_RATIO,
+                    DEFAULT_FACE_DECIMALS,
+                    null
+            );
+
+            SignedVoucher voucher = new SignedVoucher(modifiedSecret, signature, issuerPublicKeyHex);
+
+            // When / Then
+            assertThat(voucher.verify()).isFalse();
+        }
+
+        /**
+         * Tests that signature verification works with backing strategy fields.
+         */
+        @Test
+        @DisplayName("should verify signature includes backing strategy fields")
+        void shouldVerifySignatureIncludesBackingStrategyFields() {
+            // Given
+            VoucherSecret originalSecret = VoucherSecret.create(
+                    ISSUER_ID, UNIT, FACE_VALUE, null, null,
+                    BackingStrategy.FIXED, 0.02, 2, null
+            );
+            byte[] signature = VoucherSignatureService.sign(originalSecret, issuerPrivateKeyHex);
+
+            // Create a different secret with modified backing strategy
+            VoucherSecret modifiedSecret = VoucherSecret.create(
+                    originalSecret.getVoucherId(),
+                    ISSUER_ID,
+                    UNIT,
+                    FACE_VALUE,
+                    null,
+                    null,
+                    BackingStrategy.PROPORTIONAL, // Modified strategy
+                    0.02,
+                    2,
                     null
             );
 
@@ -226,6 +321,9 @@ class SignedVoucherTest {
     @DisplayName("Expiry")
     class Expiry {
 
+        /**
+         * Tests that voucher with no expiry is not expired.
+         */
         @Test
         @DisplayName("should report not expired when no expiry set")
         void shouldReportNotExpiredWhenNoExpirySet() {
@@ -236,6 +334,9 @@ class SignedVoucherTest {
             assertThat(voucher.isExpired()).isFalse();
         }
 
+        /**
+         * Tests that voucher with future expiry is not expired.
+         */
         @Test
         @DisplayName("should report not expired when expiry is in future")
         void shouldReportNotExpiredWhenExpiryIsInFuture() {
@@ -247,6 +348,9 @@ class SignedVoucherTest {
             assertThat(voucher.isExpired()).isFalse();
         }
 
+        /**
+         * Tests that voucher with past expiry is expired.
+         */
         @Test
         @DisplayName("should report expired when expiry is in past")
         void shouldReportExpiredWhenExpiryIsInPast() {
@@ -263,6 +367,9 @@ class SignedVoucherTest {
     @DisplayName("Validity")
     class Validity {
 
+        /**
+         * Tests that voucher is valid when signature is correct and not expired.
+         */
         @Test
         @DisplayName("should be valid when signature is correct and not expired")
         void shouldBeValidWhenSignatureCorrectAndNotExpired() {
@@ -273,11 +380,14 @@ class SignedVoucherTest {
             assertThat(voucher.isValid()).isTrue();
         }
 
+        /**
+         * Tests that voucher is invalid when signature is incorrect.
+         */
         @Test
         @DisplayName("should be invalid when signature is incorrect")
         void shouldBeInvalidWhenSignatureIncorrect() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] invalidSignature = new byte[64];
             SignedVoucher voucher = new SignedVoucher(secret, invalidSignature, issuerPublicKeyHex);
 
@@ -285,6 +395,9 @@ class SignedVoucherTest {
             assertThat(voucher.isValid()).isFalse();
         }
 
+        /**
+         * Tests that voucher is invalid when expired even with valid signature.
+         */
         @Test
         @DisplayName("should be invalid when expired even with valid signature")
         void shouldBeInvalidWhenExpiredEvenWithValidSignature() {
@@ -298,6 +411,9 @@ class SignedVoucherTest {
             assertThat(voucher.isValid()).isFalse(); // So overall invalid
         }
 
+        /**
+         * Tests that voucher is valid with future expiry and valid signature.
+         */
         @Test
         @DisplayName("should be valid with future expiry and valid signature")
         void shouldBeValidWithFutureExpiryAndValidSignature() {
@@ -316,6 +432,9 @@ class SignedVoucherTest {
     @DisplayName("Defensive Copying")
     class DefensiveCopying {
 
+        /**
+         * Tests that signature getter returns a defensive copy.
+         */
         @Test
         @DisplayName("should return defensive copy of signature")
         void shouldReturnDefensiveCopyOfSignature() {
@@ -331,6 +450,9 @@ class SignedVoucherTest {
             assertThat(signature1).isEqualTo(signature2); // But same content
         }
 
+        /**
+         * Tests that modifying the returned signature array does not affect the voucher.
+         */
         @Test
         @DisplayName("should not allow modification of signature through getter")
         void shouldNotAllowModificationOfSignatureThroughGetter() {
@@ -347,11 +469,14 @@ class SignedVoucherTest {
             assertThat(unchangedSignature).isEqualTo(originalSignature);
         }
 
+        /**
+         * Tests that modifications to constructor signature parameter do not affect the voucher.
+         */
         @Test
         @DisplayName("should not be affected by modifications to constructor signature parameter")
         void shouldNotBeAffectedByModificationsToConstructorSignatureParameter() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] signature = VoucherSignatureService.sign(secret, issuerPrivateKeyHex);
             byte[] originalSignature = signature.clone();
 
@@ -368,11 +493,14 @@ class SignedVoucherTest {
     @DisplayName("Equality and Hashing")
     class EqualityAndHashing {
 
+        /**
+         * Tests that two vouchers with identical fields are equal.
+         */
         @Test
         @DisplayName("should be equal when all fields match")
         void shouldBeEqualWhenAllFieldsMatch() {
             // Given
-            VoucherSecret secret = VoucherSecret.create("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecretWithId("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] signature = VoucherSignatureService.sign(secret, issuerPrivateKeyHex);
 
             SignedVoucher voucher1 = new SignedVoucher(secret, signature.clone(), issuerPublicKeyHex);
@@ -383,12 +511,15 @@ class SignedVoucherTest {
             assertThat(voucher1.hashCode()).isEqualTo(voucher2.hashCode());
         }
 
+        /**
+         * Tests that vouchers with different secrets are not equal.
+         */
         @Test
         @DisplayName("should not be equal when secrets differ")
         void shouldNotBeEqualWhenSecretsDiffer() {
             // Given
-            VoucherSecret secret1 = VoucherSecret.create("id1", ISSUER_ID, UNIT, FACE_VALUE, null, null);
-            VoucherSecret secret2 = VoucherSecret.create("id2", ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret1 = createVoucherSecretWithId("id1", ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret2 = createVoucherSecretWithId("id2", ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] signature = VoucherSignatureService.sign(secret1, issuerPrivateKeyHex);
 
             SignedVoucher voucher1 = new SignedVoucher(secret1, signature, issuerPublicKeyHex);
@@ -398,11 +529,14 @@ class SignedVoucherTest {
             assertThat(voucher1).isNotEqualTo(voucher2);
         }
 
+        /**
+         * Tests that vouchers with different signatures are not equal.
+         */
         @Test
         @DisplayName("should not be equal when signatures differ")
         void shouldNotBeEqualWhenSignaturesDiffer() {
             // Given
-            VoucherSecret secret = VoucherSecret.create("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecretWithId("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] signature1 = VoucherSignatureService.sign(secret, issuerPrivateKeyHex);
             byte[] signature2 = signature1.clone();
             signature2[0] = (byte) ~signature2[0]; // Modify one byte
@@ -414,11 +548,14 @@ class SignedVoucherTest {
             assertThat(voucher1).isNotEqualTo(voucher2);
         }
 
+        /**
+         * Tests that vouchers with different public keys are not equal.
+         */
         @Test
         @DisplayName("should not be equal when public keys differ")
         void shouldNotBeEqualWhenPublicKeysDiffer() {
             // Given
-            VoucherSecret secret = VoucherSecret.create("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecretWithId("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] signature = VoucherSignatureService.sign(secret, issuerPrivateKeyHex);
             String differentPublicKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
@@ -429,6 +566,9 @@ class SignedVoucherTest {
             assertThat(voucher1).isNotEqualTo(voucher2);
         }
 
+        /**
+         * Tests that equals is reflexive.
+         */
         @Test
         @DisplayName("should be reflexive (equals itself)")
         void shouldBeReflexive() {
@@ -439,6 +579,9 @@ class SignedVoucherTest {
             assertThat(voucher).isEqualTo(voucher);
         }
 
+        /**
+         * Tests that voucher does not equal null.
+         */
         @Test
         @DisplayName("should not equal null")
         void shouldNotEqualNull() {
@@ -449,6 +592,9 @@ class SignedVoucherTest {
             assertThat(voucher).isNotEqualTo(null);
         }
 
+        /**
+         * Tests that voucher does not equal different type.
+         */
         @Test
         @DisplayName("should not equal different type")
         void shouldNotEqualDifferentType() {
@@ -464,6 +610,9 @@ class SignedVoucherTest {
     @DisplayName("String Representations")
     class StringRepresentations {
 
+        /**
+         * Tests that toString() includes key information.
+         */
         @Test
         @DisplayName("toString() should include key information")
         void toStringShouldIncludeKeyInformation() {
@@ -481,6 +630,9 @@ class SignedVoucherTest {
             assertThat(str).contains("unit");
         }
 
+        /**
+         * Tests that toStringWithMetadata() includes detailed information.
+         */
         @Test
         @DisplayName("toStringWithMetadata() should include detailed information")
         void toStringWithMetadataShouldIncludeDetailedInformation() {

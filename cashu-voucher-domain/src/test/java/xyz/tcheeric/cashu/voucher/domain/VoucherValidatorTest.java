@@ -31,8 +31,11 @@ class VoucherValidatorTest {
     private static String issuerPrivateKeyHex;
     private static String issuerPublicKeyHex;
     private static final String ISSUER_ID = "merchant123";
-    private static final String UNIT = "sat";
-    private static final long FACE_VALUE = 10000L;
+    private static final String UNIT = "EUR";
+    private static final long FACE_VALUE = 1000L; // €10.00 in cents
+    private static final BackingStrategy DEFAULT_STRATEGY = BackingStrategy.PROPORTIONAL;
+    private static final double DEFAULT_ISSUANCE_RATIO = 0.01;
+    private static final int DEFAULT_FACE_DECIMALS = 2;
 
     @BeforeAll
     static void setupKeys() {
@@ -48,13 +51,24 @@ class VoucherValidatorTest {
         issuerPublicKeyHex = Hex.toHexString(publicKeyBytes);
     }
 
+    /**
+     * Helper method to create a VoucherSecret with default backing strategy parameters.
+     */
+    private VoucherSecret createVoucherSecret(String issuerId, String unit, long faceValue,
+                                              Long expiresAt, String memo) {
+        return VoucherSecret.create(
+                issuerId, unit, faceValue, expiresAt, memo,
+                DEFAULT_STRATEGY, DEFAULT_ISSUANCE_RATIO, DEFAULT_FACE_DECIMALS, null
+        );
+    }
+
     private SignedVoucher createValidVoucher() {
-        VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+        VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
         return VoucherSignatureService.createSigned(secret, issuerPrivateKeyHex, issuerPublicKeyHex);
     }
 
     private SignedVoucher createValidVoucherWithExpiry(Long expiresAt) {
-        VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, expiresAt, null);
+        VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, expiresAt, null);
         return VoucherSignatureService.createSigned(secret, issuerPrivateKeyHex, issuerPublicKeyHex);
     }
 
@@ -62,6 +76,9 @@ class VoucherValidatorTest {
     @DisplayName("ValidationResult")
     class ValidationResultTests {
 
+        /**
+         * Tests that success() creates a valid result with no errors.
+         */
         @Test
         @DisplayName("success() should create valid result with no errors")
         void successShouldCreateValidResult() {
@@ -74,6 +91,9 @@ class VoucherValidatorTest {
             assertThat(result.getErrorMessage()).isEmpty();
         }
 
+        /**
+         * Tests that failure(String) creates an invalid result with one error.
+         */
         @Test
         @DisplayName("failure(String) should create invalid result with one error")
         void failureWithSingleErrorShouldCreateInvalidResult() {
@@ -90,6 +110,9 @@ class VoucherValidatorTest {
             assertThat(result.getErrorMessage()).isEqualTo(error);
         }
 
+        /**
+         * Tests that failure(List) creates an invalid result with multiple errors.
+         */
         @Test
         @DisplayName("failure(List) should create invalid result with multiple errors")
         void failureWithMultipleErrorsShouldCreateInvalidResult() {
@@ -106,6 +129,9 @@ class VoucherValidatorTest {
             assertThat(result.getErrorMessage()).isEqualTo("Error 1; Error 2; Error 3");
         }
 
+        /**
+         * Tests that failure(List) rejects empty error list.
+         */
         @Test
         @DisplayName("failure(List) should reject empty error list")
         void failureWithEmptyListShouldThrow() {
@@ -115,6 +141,9 @@ class VoucherValidatorTest {
                     .hasMessageContaining("Errors list cannot be empty");
         }
 
+        /**
+         * Tests that getErrors() returns an unmodifiable list.
+         */
         @Test
         @DisplayName("getErrors() should return unmodifiable list")
         void getErrorsShouldReturnUnmodifiableList() {
@@ -126,6 +155,9 @@ class VoucherValidatorTest {
                     .isInstanceOf(UnsupportedOperationException.class);
         }
 
+        /**
+         * Tests that toString() includes status and errors.
+         */
         @Test
         @DisplayName("toString() should include status and errors")
         void toStringShouldIncludeStatusAndErrors() {
@@ -148,6 +180,9 @@ class VoucherValidatorTest {
     @DisplayName("validate()")
     class ValidateTests {
 
+        /**
+         * Tests that a correct voucher is validated successfully.
+         */
         @Test
         @DisplayName("should validate a correct voucher")
         void shouldValidateCorrectVoucher() {
@@ -162,11 +197,14 @@ class VoucherValidatorTest {
             assertThat(result.getErrors()).isEmpty();
         }
 
+        /**
+         * Tests that a voucher with invalid signature is rejected.
+         */
         @Test
         @DisplayName("should reject voucher with invalid signature")
         void shouldRejectVoucherWithInvalidSignature() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] badSignature = new byte[64]; // Invalid signature (all zeros)
             SignedVoucher voucher = new SignedVoucher(secret, badSignature, issuerPublicKeyHex);
 
@@ -178,6 +216,9 @@ class VoucherValidatorTest {
             assertThat(result.getErrors()).contains("Invalid issuer signature");
         }
 
+        /**
+         * Tests that an expired voucher is rejected.
+         */
         @Test
         @DisplayName("should reject expired voucher")
         void shouldRejectExpiredVoucher() {
@@ -193,6 +234,9 @@ class VoucherValidatorTest {
             assertThat(result.getErrors()).contains("Voucher has expired");
         }
 
+        /**
+         * Tests that a voucher with future expiry is accepted.
+         */
         @Test
         @DisplayName("should accept voucher with future expiry")
         void shouldAcceptVoucherWithFutureExpiry() {
@@ -207,6 +251,9 @@ class VoucherValidatorTest {
             assertThat(result.isValid()).isTrue();
         }
 
+        /**
+         * Tests that multiple validation errors are collected.
+         */
         @Test
         @DisplayName("should collect multiple validation errors")
         void shouldCollectMultipleValidationErrors() {
@@ -216,6 +263,10 @@ class VoucherValidatorTest {
                     UNIT,
                     FACE_VALUE,
                     Instant.now().minusSeconds(3600).getEpochSecond(),
+                    null,
+                    DEFAULT_STRATEGY,
+                    DEFAULT_ISSUANCE_RATIO,
+                    DEFAULT_FACE_DECIMALS,
                     null
             );
             byte[] badSignature = new byte[64];
@@ -235,6 +286,9 @@ class VoucherValidatorTest {
     @DisplayName("validateWithIssuer()")
     class ValidateWithIssuerTests {
 
+        /**
+         * Tests that a voucher with correct issuer is validated.
+         */
         @Test
         @DisplayName("should validate voucher with correct issuer")
         void shouldValidateVoucherWithCorrectIssuer() {
@@ -249,6 +303,9 @@ class VoucherValidatorTest {
             assertThat(result.getErrors()).isEmpty();
         }
 
+        /**
+         * Tests that a voucher with wrong issuer is rejected.
+         */
         @Test
         @DisplayName("should reject voucher with wrong issuer")
         void shouldRejectVoucherWithWrongIssuer() {
@@ -269,6 +326,9 @@ class VoucherValidatorTest {
                     .contains(wrongIssuerId);
         }
 
+        /**
+         * Tests that validation fails early if standard validation fails.
+         */
         @Test
         @DisplayName("should fail early if standard validation fails")
         void shouldFailEarlyIfStandardValidationFails() {
@@ -289,6 +349,9 @@ class VoucherValidatorTest {
     @DisplayName("validateSignatureOnly()")
     class ValidateSignatureOnlyTests {
 
+        /**
+         * Tests that only signature is validated for valid voucher.
+         */
         @Test
         @DisplayName("should validate only signature for valid voucher")
         void shouldValidateOnlySignatureForValidVoucher() {
@@ -303,11 +366,14 @@ class VoucherValidatorTest {
             assertThat(result.getErrors()).isEmpty();
         }
 
+        /**
+         * Tests that invalid signature is rejected.
+         */
         @Test
         @DisplayName("should reject invalid signature")
         void shouldRejectInvalidSignature() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] badSignature = new byte[64];
             SignedVoucher voucher = new SignedVoucher(secret, badSignature, issuerPublicKeyHex);
 
@@ -319,6 +385,9 @@ class VoucherValidatorTest {
             assertThat(result.getErrors()).contains("Invalid issuer signature");
         }
 
+        /**
+         * Tests that expiry is ignored when validating signature only.
+         */
         @Test
         @DisplayName("should ignore expiry when validating signature only")
         void shouldIgnoreExpiryWhenValidatingSignatureOnly() {
@@ -339,6 +408,9 @@ class VoucherValidatorTest {
     @DisplayName("validateExpiryOnly()")
     class ValidateExpiryOnlyTests {
 
+        /**
+         * Tests that non-expired voucher is validated.
+         */
         @Test
         @DisplayName("should validate non-expired voucher")
         void shouldValidateNonExpiredVoucher() {
@@ -354,6 +426,9 @@ class VoucherValidatorTest {
             assertThat(result.getErrors()).isEmpty();
         }
 
+        /**
+         * Tests that voucher with no expiry is validated.
+         */
         @Test
         @DisplayName("should validate voucher with no expiry")
         void shouldValidateVoucherWithNoExpiry() {
@@ -367,6 +442,9 @@ class VoucherValidatorTest {
             assertThat(result.isValid()).isTrue();
         }
 
+        /**
+         * Tests that expired voucher is rejected.
+         */
         @Test
         @DisplayName("should reject expired voucher")
         void shouldRejectExpiredVoucher() {
@@ -382,6 +460,9 @@ class VoucherValidatorTest {
             assertThat(result.getErrors()).contains("Voucher has expired");
         }
 
+        /**
+         * Tests that signature is ignored when validating expiry only.
+         */
         @Test
         @DisplayName("should ignore signature when validating expiry only")
         void shouldIgnoreSignatureWhenValidatingExpiryOnly() {
@@ -391,6 +472,10 @@ class VoucherValidatorTest {
                     UNIT,
                     FACE_VALUE,
                     Instant.now().plusSeconds(3600).getEpochSecond(),
+                    null,
+                    DEFAULT_STRATEGY,
+                    DEFAULT_ISSUANCE_RATIO,
+                    DEFAULT_FACE_DECIMALS,
                     null
             );
             byte[] badSignature = new byte[64];
@@ -408,6 +493,9 @@ class VoucherValidatorTest {
     @DisplayName("isValid()")
     class IsValidTests {
 
+        /**
+         * Tests that isValid() returns true for valid voucher.
+         */
         @Test
         @DisplayName("should return true for valid voucher")
         void shouldReturnTrueForValidVoucher() {
@@ -418,11 +506,14 @@ class VoucherValidatorTest {
             assertThat(VoucherValidator.isValid(voucher)).isTrue();
         }
 
+        /**
+         * Tests that isValid() returns false for invalid voucher.
+         */
         @Test
         @DisplayName("should return false for invalid voucher")
         void shouldReturnFalseForInvalidVoucher() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] badSignature = new byte[64];
             SignedVoucher voucher = new SignedVoucher(secret, badSignature, issuerPublicKeyHex);
 
@@ -435,11 +526,14 @@ class VoucherValidatorTest {
     @DisplayName("Edge Cases")
     class EdgeCases {
 
+        /**
+         * Tests that voucher with minimum face value is validated.
+         */
         @Test
         @DisplayName("should validate voucher with minimum face value")
         void shouldValidateVoucherWithMinimumFaceValue() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, 1L, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, 1L, null, null);
             SignedVoucher voucher = VoucherSignatureService.createSigned(secret, issuerPrivateKeyHex, issuerPublicKeyHex);
 
             // When
@@ -449,11 +543,14 @@ class VoucherValidatorTest {
             assertThat(result.isValid()).isTrue();
         }
 
+        /**
+         * Tests that voucher with large face value is validated.
+         */
         @Test
         @DisplayName("should validate voucher with large face value")
         void shouldValidateVoucherWithLargeFaceValue() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, Long.MAX_VALUE, null, null);
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, Long.MAX_VALUE, null, null);
             SignedVoucher voucher = VoucherSignatureService.createSigned(secret, issuerPrivateKeyHex, issuerPublicKeyHex);
 
             // When
@@ -463,11 +560,35 @@ class VoucherValidatorTest {
             assertThat(result.isValid()).isTrue();
         }
 
+        /**
+         * Tests that voucher with memo is validated.
+         */
         @Test
         @DisplayName("should validate voucher with memo")
         void shouldValidateVoucherWithMemo() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(ISSUER_ID, UNIT, FACE_VALUE, null, "Test memo");
+            VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, "Test memo");
+            SignedVoucher voucher = VoucherSignatureService.createSigned(secret, issuerPrivateKeyHex, issuerPublicKeyHex);
+
+            // When
+            VoucherValidator.ValidationResult result = VoucherValidator.validate(voucher);
+
+            // Then
+            assertThat(result.isValid()).isTrue();
+        }
+
+        /**
+         * Tests that voucher with backing strategy and metadata is validated.
+         */
+        @Test
+        @DisplayName("should validate voucher with backing strategy and metadata")
+        void shouldValidateVoucherWithBackingStrategyAndMetadata() {
+            // Given
+            VoucherSecret secret = VoucherSecret.create(
+                    ISSUER_ID, UNIT, FACE_VALUE, null, null,
+                    BackingStrategy.FIXED, 0.02, 2,
+                    java.util.Map.of("event", "Concert", "seat", "A12")
+            );
             SignedVoucher voucher = VoucherSignatureService.createSigned(secret, issuerPrivateKeyHex, issuerPublicKeyHex);
 
             // When

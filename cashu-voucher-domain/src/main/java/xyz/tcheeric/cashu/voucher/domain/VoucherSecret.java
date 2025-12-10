@@ -10,6 +10,7 @@ import xyz.tcheeric.cashu.common.Secret;
 import xyz.tcheeric.cashu.voucher.domain.util.VoucherSerializationUtils;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -80,6 +81,32 @@ public final class VoucherSecret extends BaseKey implements Secret {
     private final String memo;
 
     /**
+     * Backing strategy determining token amount and split capability.
+     * Required field - merchant must specify at issuance.
+     */
+    private final BackingStrategy backingStrategy;
+
+    /**
+     * Issuance ratio: face value per sat.
+     * Used to calculate face value from token amount after splits.
+     * Example: 0.01 means €0.01 per sat (so €10 = 1000 sats).
+     */
+    private final double issuanceRatio;
+
+    /**
+     * Number of decimal places for the face value currency.
+     * Example: 2 for EUR (cents), 0 for JPY.
+     */
+    private final int faceDecimals;
+
+    /**
+     * Arbitrary merchant-defined metadata.
+     * Can contain business-specific data like passenger info, event details, etc.
+     * Must be CBOR-serializable. Immutable after creation.
+     */
+    private final Map<String, Object> merchantMetadata;
+
+    /**
      * Private constructor - use factory methods to create instances.
      *
      * @param voucherId unique voucher identifier
@@ -88,6 +115,10 @@ public final class VoucherSecret extends BaseKey implements Secret {
      * @param faceValue face value (must be positive)
      * @param expiresAt optional expiry timestamp
      * @param memo optional memo
+     * @param backingStrategy backing strategy (required)
+     * @param issuanceRatio face value per sat (must be positive)
+     * @param faceDecimals decimal places for face value (must be non-negative)
+     * @param merchantMetadata optional merchant-defined metadata
      */
     private VoucherSecret(
             @NonNull String voucherId,
@@ -95,7 +126,11 @@ public final class VoucherSecret extends BaseKey implements Secret {
             @NonNull String unit,
             long faceValue,
             Long expiresAt,
-            String memo
+            String memo,
+            @NonNull BackingStrategy backingStrategy,
+            double issuanceRatio,
+            int faceDecimals,
+            Map<String, Object> merchantMetadata
     ) {
         super(new byte[0]); // Initialize BaseKey with empty array, will use toCanonicalBytes()
 
@@ -114,6 +149,12 @@ public final class VoucherSecret extends BaseKey implements Secret {
         if (expiresAt != null && expiresAt <= 0) {
             throw new IllegalArgumentException("Expiry timestamp must be positive if provided");
         }
+        if (issuanceRatio <= 0) {
+            throw new IllegalArgumentException("Issuance ratio must be positive, got: " + issuanceRatio);
+        }
+        if (faceDecimals < 0) {
+            throw new IllegalArgumentException("Face decimals must be non-negative, got: " + faceDecimals);
+        }
 
         this.voucherId = voucherId;
         this.issuerId = issuerId;
@@ -121,6 +162,12 @@ public final class VoucherSecret extends BaseKey implements Secret {
         this.faceValue = faceValue;
         this.expiresAt = expiresAt;
         this.memo = memo;
+        this.backingStrategy = backingStrategy;
+        this.issuanceRatio = issuanceRatio;
+        this.faceDecimals = faceDecimals;
+        this.merchantMetadata = merchantMetadata != null
+                ? Collections.unmodifiableMap(new LinkedHashMap<>(merchantMetadata))
+                : Collections.emptyMap();
 
         // Update BaseKey bytes with canonical representation
         this.setBytes(toCanonicalBytes());
@@ -134,6 +181,10 @@ public final class VoucherSecret extends BaseKey implements Secret {
      * @param faceValue face value (must be positive)
      * @param expiresAt optional expiry timestamp (Unix epoch seconds)
      * @param memo optional memo
+     * @param backingStrategy backing strategy (required)
+     * @param issuanceRatio face value per sat (must be positive)
+     * @param faceDecimals decimal places for face value (must be non-negative)
+     * @param merchantMetadata optional merchant-defined metadata
      * @return new VoucherSecret instance
      * @throws IllegalArgumentException if parameters are invalid
      */
@@ -142,7 +193,11 @@ public final class VoucherSecret extends BaseKey implements Secret {
             @NonNull String unit,
             long faceValue,
             Long expiresAt,
-            String memo
+            String memo,
+            @NonNull BackingStrategy backingStrategy,
+            double issuanceRatio,
+            int faceDecimals,
+            Map<String, Object> merchantMetadata
     ) {
         return new VoucherSecret(
                 UUID.randomUUID().toString(),
@@ -150,7 +205,11 @@ public final class VoucherSecret extends BaseKey implements Secret {
                 unit,
                 faceValue,
                 expiresAt,
-                memo
+                memo,
+                backingStrategy,
+                issuanceRatio,
+                faceDecimals,
+                merchantMetadata
         );
     }
 
@@ -158,7 +217,6 @@ public final class VoucherSecret extends BaseKey implements Secret {
      * Creates a voucher with specified voucher ID.
      *
      * <p>This method is primarily for deserialization and testing.
-     * Production code should prefer {@link #create(String, String, long, Long, String)}.
      *
      * @param voucherId voucher identifier
      * @param issuerId issuer identifier
@@ -166,6 +224,10 @@ public final class VoucherSecret extends BaseKey implements Secret {
      * @param faceValue face value (must be positive)
      * @param expiresAt optional expiry timestamp (Unix epoch seconds)
      * @param memo optional memo
+     * @param backingStrategy backing strategy (required)
+     * @param issuanceRatio face value per sat (must be positive)
+     * @param faceDecimals decimal places for face value (must be non-negative)
+     * @param merchantMetadata optional merchant-defined metadata
      * @return new VoucherSecret instance
      * @throws IllegalArgumentException if parameters are invalid
      */
@@ -175,9 +237,115 @@ public final class VoucherSecret extends BaseKey implements Secret {
             @NonNull String unit,
             long faceValue,
             Long expiresAt,
-            String memo
+            String memo,
+            @NonNull BackingStrategy backingStrategy,
+            double issuanceRatio,
+            int faceDecimals,
+            Map<String, Object> merchantMetadata
     ) {
-        return new VoucherSecret(voucherId, issuerId, unit, faceValue, expiresAt, memo);
+        return new VoucherSecret(
+                voucherId,
+                issuerId,
+                unit,
+                faceValue,
+                expiresAt,
+                memo,
+                backingStrategy,
+                issuanceRatio,
+                faceDecimals,
+                merchantMetadata
+        );
+    }
+
+    /**
+     * Returns a builder for creating VoucherSecret instances with fluent API.
+     *
+     * @return new builder instance
+     */
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /**
+     * Builder for VoucherSecret with fluent API.
+     */
+    public static class Builder {
+        private String voucherId;
+        private String issuerId;
+        private String unit;
+        private long faceValue;
+        private Long expiresAt;
+        private String memo;
+        private BackingStrategy backingStrategy;
+        private double issuanceRatio;
+        private int faceDecimals;
+        private Map<String, Object> merchantMetadata;
+
+        public Builder voucherId(String voucherId) {
+            this.voucherId = voucherId;
+            return this;
+        }
+
+        public Builder issuerId(String issuerId) {
+            this.issuerId = issuerId;
+            return this;
+        }
+
+        public Builder unit(String unit) {
+            this.unit = unit;
+            return this;
+        }
+
+        public Builder faceValue(long faceValue) {
+            this.faceValue = faceValue;
+            return this;
+        }
+
+        public Builder expiresAt(Long expiresAt) {
+            this.expiresAt = expiresAt;
+            return this;
+        }
+
+        public Builder memo(String memo) {
+            this.memo = memo;
+            return this;
+        }
+
+        public Builder backingStrategy(BackingStrategy backingStrategy) {
+            this.backingStrategy = backingStrategy;
+            return this;
+        }
+
+        public Builder issuanceRatio(double issuanceRatio) {
+            this.issuanceRatio = issuanceRatio;
+            return this;
+        }
+
+        public Builder faceDecimals(int faceDecimals) {
+            this.faceDecimals = faceDecimals;
+            return this;
+        }
+
+        public Builder merchantMetadata(Map<String, Object> merchantMetadata) {
+            this.merchantMetadata = merchantMetadata;
+            return this;
+        }
+
+        public VoucherSecret build() {
+            String id = voucherId != null ? voucherId : UUID.randomUUID().toString();
+            return new VoucherSecret(
+                    id,
+                    issuerId,
+                    unit,
+                    faceValue,
+                    expiresAt,
+                    memo,
+                    backingStrategy,
+                    issuanceRatio,
+                    faceDecimals,
+                    merchantMetadata
+            );
+        }
     }
 
     /**
@@ -185,10 +353,14 @@ public final class VoucherSecret extends BaseKey implements Secret {
      *
      * <p>Fields are serialized to CBOR in alphabetical order:
      * <ol>
+     *   <li>backingStrategy</li>
      *   <li>expiresAt (if present)</li>
+     *   <li>faceDecimals</li>
      *   <li>faceValue</li>
+     *   <li>issuanceRatio</li>
      *   <li>issuerId</li>
      *   <li>memo (if present)</li>
+     *   <li>merchantMetadata (if not empty)</li>
      *   <li>unit</li>
      *   <li>voucherId</li>
      * </ol>
@@ -199,13 +371,19 @@ public final class VoucherSecret extends BaseKey implements Secret {
         Map<String, Object> map = new LinkedHashMap<>();
 
         // Alphabetical ordering for deterministic serialization
+        map.put("backingStrategy", backingStrategy.name());
         if (expiresAt != null) {
             map.put("expiresAt", expiresAt);
         }
+        map.put("faceDecimals", faceDecimals);
         map.put("faceValue", faceValue);
+        map.put("issuanceRatio", issuanceRatio);
         map.put("issuerId", issuerId);
         if (memo != null && !memo.isBlank()) {
             map.put("memo", memo);
+        }
+        if (merchantMetadata != null && !merchantMetadata.isEmpty()) {
+            map.put("merchantMetadata", merchantMetadata);
         }
         map.put("unit", unit);
         map.put("voucherId", voucherId);
@@ -299,12 +477,18 @@ public final class VoucherSecret extends BaseKey implements Secret {
         sb.append(", issuerId='").append(issuerId).append('\'');
         sb.append(", unit='").append(unit).append('\'');
         sb.append(", faceValue=").append(faceValue);
+        sb.append(", faceDecimals=").append(faceDecimals);
+        sb.append(", backingStrategy=").append(backingStrategy);
+        sb.append(", issuanceRatio=").append(issuanceRatio);
         if (expiresAt != null) {
             sb.append(", expiresAt=").append(expiresAt);
             sb.append(" (").append(isExpired() ? "EXPIRED" : "valid").append(")");
         }
         if (memo != null) {
             sb.append(", memo='").append(memo).append('\'');
+        }
+        if (!merchantMetadata.isEmpty()) {
+            sb.append(", merchantMetadata=").append(merchantMetadata);
         }
         sb.append('}');
         return sb.toString();
@@ -318,15 +502,20 @@ public final class VoucherSecret extends BaseKey implements Secret {
 
         VoucherSecret that = (VoucherSecret) o;
         return faceValue == that.faceValue &&
+                faceDecimals == that.faceDecimals &&
+                Double.compare(issuanceRatio, that.issuanceRatio) == 0 &&
                 voucherId.equals(that.voucherId) &&
                 issuerId.equals(that.issuerId) &&
                 unit.equals(that.unit) &&
+                backingStrategy == that.backingStrategy &&
                 Objects.equals(expiresAt, that.expiresAt) &&
-                Objects.equals(memo, that.memo);
+                Objects.equals(memo, that.memo) &&
+                Objects.equals(merchantMetadata, that.merchantMetadata);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), voucherId, issuerId, unit, faceValue, expiresAt, memo);
+        return Objects.hash(super.hashCode(), voucherId, issuerId, unit, faceValue, expiresAt, memo,
+                backingStrategy, issuanceRatio, faceDecimals, merchantMetadata);
     }
 }
