@@ -1,6 +1,7 @@
 package xyz.tcheeric.cashu.voucher.nostr;
 
 import org.junit.jupiter.api.*;
+import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
@@ -269,7 +270,11 @@ class NostrVoucherBackupRepositoryTest {
                 UNIT,
                 faceValue,
                 expiresAt,
-                "Test voucher " + voucherId
+                "Test voucher " + voucherId,
+                BackingStrategy.FIXED,
+                1.0,
+                0,
+                null
         );
 
         return VoucherSignatureService.createSigned(

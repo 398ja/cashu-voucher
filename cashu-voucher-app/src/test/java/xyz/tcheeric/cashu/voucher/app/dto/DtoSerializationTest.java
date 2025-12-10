@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
@@ -116,7 +117,7 @@ class DtoSerializationTest {
             // is tested at integration level. Here we verify the DTO structure.
 
             // Given - test that the DTO structure is correct
-            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 10000L, null, "Test memo");
+            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 10000L, null, "Test memo", BackingStrategy.FIXED, 1.0, 0, null);
             SignedVoucher voucher = new SignedVoucher(
                     secret,
                     new byte[64],
@@ -205,7 +206,7 @@ class DtoSerializationTest {
         @DisplayName("should create success response with voucher")
         void shouldCreateSuccessResponse() throws Exception {
             // Given
-            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 10000L, null, null);
+            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 10000L, null, null, BackingStrategy.FIXED, 1.0, 0, null);
             SignedVoucher voucher = new SignedVoucher(secret, new byte[64], "a".repeat(64));
 
             // When
@@ -238,7 +239,7 @@ class DtoSerializationTest {
         @DisplayName("should have correct convenience accessors")
         void shouldHaveConvenienceAccessors() throws Exception {
             // Given
-            VoucherSecret secret = VoucherSecret.create("merchant123", "usd", 100L, null, null);
+            VoucherSecret secret = VoucherSecret.create("merchant123", "usd", 100L, null, null, BackingStrategy.FIXED, 1.0, 0, null);
             SignedVoucher voucher = new SignedVoucher(secret, new byte[64], "a".repeat(64));
 
             // When
@@ -258,7 +259,7 @@ class DtoSerializationTest {
         @DisplayName("should create from SignedVoucher with correct fields")
         void shouldCreateFromSignedVoucher() throws Exception {
             // Given
-            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 10000L, null, "Test");
+            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 10000L, null, "Test", BackingStrategy.FIXED, 1.0, 0, null);
             SignedVoucher signedVoucher = new SignedVoucher(secret, new byte[64], "a".repeat(64));
 
             // When
@@ -281,7 +282,7 @@ class DtoSerializationTest {
         @DisplayName("should have working helper methods")
         void shouldHaveWorkingHelperMethods() throws Exception {
             // Given
-            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 10000L, null, null);
+            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 10000L, null, null, BackingStrategy.FIXED, 1.0, 0, null);
             SignedVoucher signedVoucher = new SignedVoucher(secret, new byte[64], "a".repeat(64));
 
             // When
@@ -300,7 +301,7 @@ class DtoSerializationTest {
         @DisplayName("should handle nullable fields correctly")
         void shouldHandleNullableFields() throws Exception {
             // Given
-            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 5000L, null, null);
+            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 5000L, null, null, BackingStrategy.FIXED, 1.0, 0, null);
             SignedVoucher signedVoucher = new SignedVoucher(secret, new byte[64], "a".repeat(64));
 
             // When

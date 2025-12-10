@@ -4,6 +4,9 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
+
+import java.util.Map;
 
 /**
  * Request DTO for issuing a new voucher.
@@ -69,4 +72,35 @@ public class IssueVoucherRequest {
      * Production code should typically leave this null.
      */
     private String voucherId;
+
+    /**
+     * The backing strategy for the voucher.
+     * Determines how tokens back the voucher and split capabilities.
+     * Defaults to FIXED if not specified.
+     */
+    @Builder.Default
+    private BackingStrategy backingStrategy = BackingStrategy.FIXED;
+
+    /**
+     * Issuance ratio: face value per sat.
+     * Used to calculate face value from token amount after splits.
+     * Example: 0.01 means €0.01 per sat (so €10 = 1000 sats).
+     * Defaults to 1.0 if not specified.
+     */
+    @Builder.Default
+    private double issuanceRatio = 1.0;
+
+    /**
+     * Number of decimal places for the face value currency.
+     * Example: 2 for EUR (cents), 0 for JPY, 0 for satoshis.
+     * Defaults to 0 if not specified.
+     */
+    @Builder.Default
+    private int faceDecimals = 0;
+
+    /**
+     * Optional: Arbitrary merchant-defined metadata.
+     * Can contain business-specific data like passenger info, event details, etc.
+     */
+    private Map<String, Object> merchantMetadata;
 }

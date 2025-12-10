@@ -6,9 +6,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import nostr.util.NostrUtil;
+import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
 
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -30,6 +32,10 @@ final class VoucherEventPayloadMapper {
         payload.setFaceValue(secret.getFaceValue());
         payload.setExpiresAt(secret.getExpiresAt());
         payload.setMemo(secret.getMemo());
+        payload.setBackingStrategy(secret.getBackingStrategy().name());
+        payload.setIssuanceRatio(secret.getIssuanceRatio());
+        payload.setFaceDecimals(secret.getFaceDecimals());
+        payload.setMerchantMetadata(secret.getMerchantMetadata());
         payload.setIssuerSignature(NostrUtil.bytesToHex(voucher.getIssuerSignature()));
         payload.setIssuerPublicKey(voucher.getIssuerPublicKey());
         return payload;
@@ -38,13 +44,21 @@ final class VoucherEventPayloadMapper {
     static SignedVoucher toDomain(VoucherPayload payload) {
         Objects.requireNonNull(payload, "payload");
 
+        BackingStrategy backingStrategy = payload.getBackingStrategy() != null
+                ? BackingStrategy.valueOf(payload.getBackingStrategy())
+                : BackingStrategy.FIXED;
+
         VoucherSecret secret = VoucherSecret.create(
                 Objects.requireNonNull(payload.getVoucherId(), "voucherId"),
                 Objects.requireNonNull(payload.getIssuerId(), "issuerId"),
                 Objects.requireNonNull(payload.getUnit(), "unit"),
                 payload.getFaceValue(),
                 payload.getExpiresAt(),
-                payload.getMemo()
+                payload.getMemo(),
+                backingStrategy,
+                payload.getIssuanceRatio() > 0 ? payload.getIssuanceRatio() : 1.0,
+                payload.getFaceDecimals(),
+                payload.getMerchantMetadata()
         );
 
         String signatureHex = Objects.requireNonNull(payload.getIssuerSignature(), "issuerSignature");
@@ -77,6 +91,18 @@ final class VoucherEventPayloadMapper {
 
         @JsonProperty("memo")
         private String memo;
+
+        @JsonProperty("backingStrategy")
+        private String backingStrategy;
+
+        @JsonProperty("issuanceRatio")
+        private double issuanceRatio;
+
+        @JsonProperty("faceDecimals")
+        private int faceDecimals;
+
+        @JsonProperty("merchantMetadata")
+        private Map<String, Object> merchantMetadata;
 
         @JsonProperty("issuerSignature")
         private String issuerSignature;

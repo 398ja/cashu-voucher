@@ -154,7 +154,11 @@ public class VoucherService {
                     request.getUnit(),
                     request.getAmount(),
                     expiresAt,
-                    request.getMemo()
+                    request.getMemo(),
+                    request.getBackingStrategy(),
+                    request.getIssuanceRatio(),
+                    request.getFaceDecimals(),
+                    request.getMerchantMetadata()
             );
             log.debug("Created voucher with custom ID: {}", request.getVoucherId());
         } else {
@@ -163,7 +167,11 @@ public class VoucherService {
                     request.getUnit(),
                     request.getAmount(),
                     expiresAt,
-                    request.getMemo()
+                    request.getMemo(),
+                    request.getBackingStrategy(),
+                    request.getIssuanceRatio(),
+                    request.getFaceDecimals(),
+                    request.getMerchantMetadata()
             );
             log.debug("Created voucher with auto-generated ID: {}", secret.getVoucherId());
         }

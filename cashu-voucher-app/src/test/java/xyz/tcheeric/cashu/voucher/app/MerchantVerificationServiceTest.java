@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherRequest;
 import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherResponse;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherLedgerPort;
+import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
@@ -71,7 +72,11 @@ class MerchantVerificationServiceTest {
                 UNIT,
                 AMOUNT,
                 null, // No expiry
-                null  // No memo
+                null, // No memo
+                BackingStrategy.FIXED,
+                1.0,
+                0,
+                null
         );
         return VoucherSignatureService.createSigned(secret, ISSUER_PRIVKEY, ISSUER_PUBKEY);
     }
@@ -86,6 +91,10 @@ class MerchantVerificationServiceTest {
                 UNIT,
                 AMOUNT,
                 pastExpiry,
+                null,
+                BackingStrategy.FIXED,
+                1.0,
+                0,
                 null
         );
         return VoucherSignatureService.createSigned(secret, ISSUER_PRIVKEY, ISSUER_PUBKEY);
@@ -100,6 +109,10 @@ class MerchantVerificationServiceTest {
                 UNIT,
                 AMOUNT,
                 null,
+                null,
+                BackingStrategy.FIXED,
+                1.0,
+                0,
                 null
         );
         SignedVoucher valid = VoucherSignatureService.createSigned(secret, ISSUER_PRIVKEY, ISSUER_PUBKEY);
