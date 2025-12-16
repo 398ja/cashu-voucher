@@ -1,13 +1,12 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
-import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters;
+import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.security.SecureRandom;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.*;
@@ -39,13 +38,9 @@ class VoucherValidatorTest {
 
     @BeforeAll
     static void setupKeys() {
-        // Generate a test ED25519 key pair
-        SecureRandom random = new SecureRandom();
-        byte[] privateKeyBytes = new byte[32];
-        random.nextBytes(privateKeyBytes);
-
-        Ed25519PrivateKeyParameters privateKey = new Ed25519PrivateKeyParameters(privateKeyBytes, 0);
-        byte[] publicKeyBytes = privateKey.generatePublicKey().getEncoded();
+        // Generate a test secp256k1 key pair (Schnorr/Nostr compatible)
+        byte[] privateKeyBytes = Schnorr.generatePrivateKey();
+        byte[] publicKeyBytes = Schnorr.genPubKey(privateKeyBytes);
 
         issuerPrivateKeyHex = Hex.toHexString(privateKeyBytes);
         issuerPublicKeyHex = Hex.toHexString(publicKeyBytes);

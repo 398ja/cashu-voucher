@@ -1,74 +1,82 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
 import lombok.NonNull;
-import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters;
-import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
-import org.bouncycastle.crypto.signers.Ed25519Signer;
+import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+
 /**
- * Service for ED25519 signature generation and verification of voucher secrets.
+ * Service for secp256k1/Schnorr signature generation and verification of voucher secrets.
  *
- * <p>This service provides cryptographic operations for vouchers:
+ * <p>This service provides cryptographic operations for vouchers using the same
+ * signature scheme as Nostr (BIP-340 Schnorr signatures over secp256k1):
  * <ul>
- *   <li>Signing voucher secrets with issuer private keys (ED25519)</li>
- *   <li>Verifying signatures with issuer public keys (ED25519)</li>
+ *   <li>Signing voucher secrets with issuer private keys (secp256k1/Schnorr)</li>
+ *   <li>Verifying signatures with issuer public keys (secp256k1 x-only)</li>
  *   <li>Creating complete {@link SignedVoucher} instances</li>
  * </ul>
  *
  * <h3>Cryptographic Details</h3>
- * <p>Uses ED25519 signatures over the canonical CBOR representation of the voucher secret.
+ * <p>Uses BIP-340 Schnorr signatures over the canonical CBOR representation of the voucher secret.
  * The canonical bytes are obtained via {@link VoucherSecret#toCanonicalBytes()}, which ensures
  * deterministic serialization.
  *
  * <h3>Key Format</h3>
- * <p>Keys are expected as hex-encoded strings:
+ * <p>Keys are expected as hex-encoded strings (matching Nostr format):
  * <ul>
- *   <li>Private key: 64 hex characters (32 bytes)</li>
- *   <li>Public key: 64 hex characters (32 bytes)</li>
+ *   <li>Private key: 64 hex characters (32 bytes) - secp256k1 scalar</li>
+ *   <li>Public key: 64 hex characters (32 bytes) - x-only secp256k1 point</li>
  * </ul>
+ *
+ * <h3>Signature Format</h3>
+ * <p>Signatures are 64 bytes (BIP-340 Schnorr format).
  *
  * <h3>Thread Safety</h3>
  * <p>All methods are stateless and thread-safe.
  *
  * @see VoucherSecret
  * @see SignedVoucher
- * @see <a href="https://en.wikipedia.org/wiki/EdDSA#Ed25519">ED25519 Specification</a>
+ * @see <a href="https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki">BIP-340 Schnorr Signatures</a>
  */
 public final class VoucherSignatureService {
 
     private static final Logger logger = LoggerFactory.getLogger(VoucherSignatureService.class);
 
     /**
-     * Expected length for ED25519 private keys (32 bytes = 64 hex chars).
+     * Expected length for secp256k1 private keys (32 bytes = 64 hex chars).
      */
-    private static final int ED25519_PRIVATE_KEY_LENGTH = 32;
+    private static final int SECP256K1_PRIVATE_KEY_LENGTH = 32;
 
     /**
-     * Expected length for ED25519 public keys (32 bytes = 64 hex chars).
+     * Expected length for secp256k1 x-only public keys (32 bytes = 64 hex chars).
      */
-    private static final int ED25519_PUBLIC_KEY_LENGTH = 32;
+    private static final int SECP256K1_PUBLIC_KEY_LENGTH = 32;
 
     /**
-     * Expected length for ED25519 signatures (64 bytes).
+     * Expected length for BIP-340 Schnorr signatures (64 bytes).
      */
-    private static final int ED25519_SIGNATURE_LENGTH = 64;
+    private static final int SCHNORR_SIGNATURE_LENGTH = 64;
+
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private VoucherSignatureService() {
         throw new UnsupportedOperationException("Utility class cannot be instantiated");
     }
 
     /**
-     * Signs a voucher secret with an issuer's private key.
+     * Signs a voucher secret with an issuer's private key using Schnorr signatures.
      *
      * <p>The signature is generated over the canonical CBOR bytes of the voucher secret
-     * using ED25519. The resulting signature is 64 bytes.
+     * using BIP-340 Schnorr signatures. The resulting signature is 64 bytes.
      *
      * @param secret the voucher secret to sign (must not be null)
      * @param issuerPrivateKeyHex the issuer's private key as hex string (64 chars, must not be null)
-     * @return the ED25519 signature (64 bytes)
+     * @return the Schnorr signature (64 bytes)
      * @throws IllegalArgumentException if the private key format is invalid
      */
     public static byte[] sign(
@@ -78,23 +86,24 @@ public final class VoucherSignatureService {
         try {
             byte[] privateKeyBytes = Hex.decode(issuerPrivateKeyHex);
 
-            if (privateKeyBytes.length != ED25519_PRIVATE_KEY_LENGTH) {
+            if (privateKeyBytes.length != SECP256K1_PRIVATE_KEY_LENGTH) {
                 throw new IllegalArgumentException(
-                        "Invalid private key length: expected " + ED25519_PRIVATE_KEY_LENGTH +
+                        "Invalid private key length: expected " + SECP256K1_PRIVATE_KEY_LENGTH +
                                 " bytes, got " + privateKeyBytes.length);
             }
 
-            Ed25519PrivateKeyParameters privateKey = new Ed25519PrivateKeyParameters(privateKeyBytes, 0);
-            Ed25519Signer signer = new Ed25519Signer();
-            signer.init(true, privateKey);
+            // Hash the canonical CBOR bytes to get a 32-byte message for BIP-340
+            byte[] canonicalBytes = secret.toCanonicalBytes();
+            byte[] messageHash = sha256(canonicalBytes);
 
-            byte[] message = secret.toCanonicalBytes();
-            signer.update(message, 0, message.length);
+            // Generate 32 bytes of auxiliary randomness for BIP-340 signing
+            byte[] auxRand = new byte[32];
+            SECURE_RANDOM.nextBytes(auxRand);
 
-            byte[] signature = signer.generateSignature();
+            byte[] signature = Schnorr.sign(messageHash, privateKeyBytes, auxRand);
 
             if (logger.isDebugEnabled()) {
-                logger.debug("Signed voucher {} (issuerId={}) with signature length={}",
+                logger.debug("Signed voucher {} (issuerId={}) with Schnorr signature length={}",
                         secret.getVoucherId(),
                         secret.getIssuerId(),
                         signature.length);
@@ -113,7 +122,7 @@ public final class VoucherSignatureService {
      * Verifies a voucher signature using the issuer's public key.
      *
      * <p>Verifies that the signature is valid for the voucher secret's canonical bytes
-     * using ED25519 signature verification.
+     * using BIP-340 Schnorr signature verification.
      *
      * @param secret the voucher secret (must not be null)
      * @param signature the signature to verify (must not be null, 64 bytes)
@@ -126,28 +135,25 @@ public final class VoucherSignatureService {
             @NonNull String issuerPublicKeyHex
     ) {
         try {
-            if (signature.length != ED25519_SIGNATURE_LENGTH) {
+            if (signature.length != SCHNORR_SIGNATURE_LENGTH) {
                 logger.warn("Invalid signature length for voucher {}: expected {} bytes, got {}",
-                        secret.getVoucherId(), ED25519_SIGNATURE_LENGTH, signature.length);
+                        secret.getVoucherId(), SCHNORR_SIGNATURE_LENGTH, signature.length);
                 return false;
             }
 
             byte[] publicKeyBytes = Hex.decode(issuerPublicKeyHex);
 
-            if (publicKeyBytes.length != ED25519_PUBLIC_KEY_LENGTH) {
+            if (publicKeyBytes.length != SECP256K1_PUBLIC_KEY_LENGTH) {
                 logger.warn("Invalid public key length: expected {} bytes, got {}",
-                        ED25519_PUBLIC_KEY_LENGTH, publicKeyBytes.length);
+                        SECP256K1_PUBLIC_KEY_LENGTH, publicKeyBytes.length);
                 return false;
             }
 
-            Ed25519PublicKeyParameters publicKey = new Ed25519PublicKeyParameters(publicKeyBytes, 0);
-            Ed25519Signer verifier = new Ed25519Signer();
-            verifier.init(false, publicKey);
+            // Hash the canonical CBOR bytes to get a 32-byte message for BIP-340
+            byte[] canonicalBytes = secret.toCanonicalBytes();
+            byte[] messageHash = sha256(canonicalBytes);
 
-            byte[] message = secret.toCanonicalBytes();
-            verifier.update(message, 0, message.length);
-
-            boolean valid = verifier.verifySignature(signature);
+            boolean valid = Schnorr.verify(messageHash, publicKeyBytes, signature);
 
             if (logger.isDebugEnabled()) {
                 logger.debug("Verified voucher {} (issuerId={}): {}",
@@ -170,7 +176,7 @@ public final class VoucherSignatureService {
      *
      * <p>This is a convenience method that combines signing and voucher creation:
      * <ol>
-     *   <li>Signs the voucher secret with the private key</li>
+     *   <li>Signs the voucher secret with the private key using Schnorr</li>
      *   <li>Creates a {@link SignedVoucher} with the signature and public key</li>
      * </ol>
      *
@@ -190,19 +196,17 @@ public final class VoucherSignatureService {
     }
 
     /**
-     * Validates that a hex-encoded key string has the expected length.
+     * Computes SHA-256 hash of input bytes.
      *
-     * @param keyHex the key hex string
-     * @param expectedBytes the expected byte length
-     * @param keyType description of the key type for error messages
-     * @throws IllegalArgumentException if the length is invalid
+     * @param input bytes to hash
+     * @return 32-byte SHA-256 hash
      */
-    private static void validateKeyLength(String keyHex, int expectedBytes, String keyType) {
-        byte[] keyBytes = Hex.decode(keyHex);
-        if (keyBytes.length != expectedBytes) {
-            throw new IllegalArgumentException(
-                    "Invalid " + keyType + " length: expected " + expectedBytes +
-                            " bytes, got " + keyBytes.length);
+    private static byte[] sha256(byte[] input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return digest.digest(input);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
         }
     }
 }

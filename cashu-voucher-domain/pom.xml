@@ -34,6 +34,13 @@
             <artifactId>bcprov-jdk18on</artifactId>
         </dependency>
 
+        <!-- Nostr Schnorr signatures (secp256k1) -->
+        <dependency>
+            <groupId>xyz.tcheeric</groupId>
+            <artifactId>nostr-java-crypto</artifactId>
+            <version>1.1.0</version>
+        </dependency>
+
         <!-- Jackson for CBOR serialization -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

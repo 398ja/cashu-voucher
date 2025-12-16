@@ -1,6 +1,6 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
-import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters;
+import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -17,11 +17,11 @@ import static org.assertj.core.api.Assertions.*;
  *
  * <p>This test class verifies:
  * <ul>
- *   <li>ED25519 signature generation</li>
+ *   <li>secp256k1/Schnorr signature generation</li>
  *   <li>Signature verification</li>
  *   <li>Key validation</li>
  *   <li>Error handling for invalid inputs</li>
- *   <li>Signature determinism</li>
+ *   <li>Signature verifiability</li>
  *   <li>Cross-verification between sign and verify</li>
  * </ul>
  */
@@ -39,13 +39,9 @@ class VoucherSignatureServiceTest {
 
     @BeforeAll
     static void setupKeys() {
-        // Generate a test ED25519 key pair
-        SecureRandom random = new SecureRandom();
-        byte[] privateKeyBytes = new byte[32];
-        random.nextBytes(privateKeyBytes);
-
-        Ed25519PrivateKeyParameters privateKey = new Ed25519PrivateKeyParameters(privateKeyBytes, 0);
-        byte[] publicKeyBytes = privateKey.generatePublicKey().getEncoded();
+        // Generate a test secp256k1 key pair (Schnorr/Nostr compatible)
+        byte[] privateKeyBytes = Schnorr.generatePrivateKey();
+        byte[] publicKeyBytes = Schnorr.genPubKey(privateKeyBytes);
 
         issuerPrivateKeyHex = Hex.toHexString(privateKeyBytes);
         issuerPublicKeyHex = Hex.toHexString(publicKeyBytes);
@@ -78,7 +74,7 @@ class VoucherSignatureServiceTest {
     class SignTests {
 
         /**
-         * Tests that a 64-byte ED25519 signature is generated.
+         * Tests that a 64-byte Schnorr signature is generated.
          */
         @Test
         @DisplayName("should generate 64-byte signature")
@@ -95,11 +91,13 @@ class VoucherSignatureServiceTest {
         }
 
         /**
-         * Tests that the same input produces the same signature (determinism).
+         * Tests that multiple signatures of the same input are all verifiable.
+         * Note: BIP-340 Schnorr signatures use auxiliary randomness, so signatures
+         * won't be identical, but all should verify correctly.
          */
         @Test
-        @DisplayName("should generate deterministic signature for same input")
-        void shouldGenerateDeterministicSignatureForSameInput() {
+        @DisplayName("should generate verifiable signatures for same input")
+        void shouldGenerateVerifiableSignaturesForSameInput() {
             // Given
             VoucherSecret secret = createVoucherSecretWithId("fixed-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
 
@@ -107,8 +105,9 @@ class VoucherSignatureServiceTest {
             byte[] signature1 = VoucherSignatureService.sign(secret, issuerPrivateKeyHex);
             byte[] signature2 = VoucherSignatureService.sign(secret, issuerPrivateKeyHex);
 
-            // Then
-            assertThat(signature1).isEqualTo(signature2);
+            // Then - both signatures should verify correctly
+            assertThat(VoucherSignatureService.verify(secret, signature1, issuerPublicKeyHex)).isTrue();
+            assertThat(VoucherSignatureService.verify(secret, signature2, issuerPublicKeyHex)).isTrue();
         }
 
         /**
@@ -299,19 +298,16 @@ class VoucherSignatureServiceTest {
             // Given
             VoucherSecret secret = createVoucherSecret(ISSUER_ID, UNIT, FACE_VALUE, null, null);
 
-            // Generate different key pair
-            SecureRandom random = new SecureRandom();
-            byte[] wrongPrivateKeyBytes = new byte[32];
-            random.nextBytes(wrongPrivateKeyBytes);
+            // Generate different secp256k1 key pair
+            byte[] wrongPrivateKeyBytes = Schnorr.generatePrivateKey();
+            byte[] wrongPublicKeyBytes = Schnorr.genPubKey(wrongPrivateKeyBytes);
             String wrongPrivateKeyHex = Hex.toHexString(wrongPrivateKeyBytes);
-
-            Ed25519PrivateKeyParameters wrongPrivateKey = new Ed25519PrivateKeyParameters(wrongPrivateKeyBytes, 0);
-            String wrongPublicKeyHex = Hex.toHexString(wrongPrivateKey.generatePublicKey().getEncoded());
+            String wrongPublicKeyHex = Hex.toHexString(wrongPublicKeyBytes);
 
             // Sign with wrong key
             byte[] signature = VoucherSignatureService.sign(secret, wrongPrivateKeyHex);
 
-            // When - Verify with correct public key
+            // When - Verify with correct public key (not the one that signed)
             boolean valid = VoucherSignatureService.verify(secret, signature, issuerPublicKeyHex);
 
             // Then
