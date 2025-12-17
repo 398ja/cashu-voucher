@@ -128,9 +128,24 @@ Event kinds and tags (align with README):
 - Structure logs with stable fields: `voucherId`, `merchantId`, `nostrKind`, `relay`, `keysetId`.
 
 ## Documentation
-- Keep `README.md` aligned with current module responsibilities, key classes, CLI commands, and Nostr event kinds/tags.
-- Public APIs (domain/app ports) should have Javadoc explaining invariants, threading expectations, and error semantics.
-- This repo does not include `docs/` or `project/`; defer to cashu-lib’s documentation for deep protocol and planning material and link from `README.md` when relevant.
+
+- When generating documentation:
+  - Follow the Diátaxis framework and classify each document as a tutorial, how-to guide, reference, or explanation.
+  - Place new Markdown files under `docs/<section>` matching the chosen category.
+  - Start each document with a top-level `#` heading and a short introduction that states the purpose.
+  - Link the document from `docs/README.md` in the corresponding section.
+  - Use relative links to reference other documents and keep code snippets minimal and tested.
+  - Consult the following resources on Diátaxis for guidance:
+    - https://github.blog/developer-skills/documentation-done-right-a-developers-guide/
+    - https://diataxis.fr/
+    - https://diataxis.fr/start-here/
+    - https://diataxis.fr/how-to-use-diataxis/
+    - https://diataxis.fr/tutorials/
+    - https://diataxis.fr/how-to-guides/
+    - https://diataxis.fr/tutorials-how-to/
+    - https://diataxis.fr/quality/
+    - https://diataxis.fr/complex-hierarchies/
+    - https://diataxis.fr/compass/
 
 ## Versioning & Release
 - Versioning: follow Semantic Versioning. Keep all modules on the same version (`pom.xml` parent and child inherit).
@@ -180,6 +195,18 @@ Event kinds and tags (align with README):
 Project documentation
 - The `project/` directory captures ongoing protocol work (voucher compatibility, CLI integration, release phases). Review these documents when implementing Model B, Nostr storage, or NUT-13 features to stay aligned with the planned architecture.
 - Keep `project/README.md` updated when adding or renaming documents.
+
+## Changelog Maintenance
+
+- **Always update `CHANGELOG.md`** after any version change or significant code modification.
+- Follow the [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format:
+  - Group changes under: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`
+  - List versions in reverse chronological order (newest first)
+  - Use `[Unreleased]` section for changes not yet in a release
+  - Include the release date in ISO format: `## [1.0.0] - 2025-12-17`
+- Each entry should be a concise, human-readable description of the change
+- Reference related issues or PRs where applicable
+- Update the changelog in the same commit as the version bump when possible
 
 ## Pre-Submit Checklist
 - Code follows module guidelines above and maintains deterministic behaviour where required.
