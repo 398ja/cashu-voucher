@@ -24,6 +24,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.2] - 2025-12-17
+
+### Compatibility Notes
+
+- **Voucher Swap Support**: Voucher tokens can now be swapped at the mint
+  - Requires cashu-lib 0.7.2+ for NUT-10 BDHKE verification
+  - Requires cashu-mint 0.4.3+ for voucher proof acceptance
+  - Requires cashu-client 1.2.3+ for proper voucher token routing
+  - Model B enforcement (redemption control) remains at merchant/application layer
+
+### Documentation
+
+- Clarified that swapping voucher proofs at mint is valid Cashu protocol operation
+- Model B controls where vouchers can be **redeemed** for goods/services, not where they can be **swapped** for fresh proofs
+
+---
+
 ## [0.1.0] - 2025-11-06
 
 ### 🎉 Initial Release
