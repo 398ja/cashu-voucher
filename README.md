@@ -8,20 +8,37 @@ Cashu Voucher implements **Model B** gift card vouchers - vouchers that are spen
 
 ### Key Features
 
-✅ **Model B Implementation** - Vouchers only redeemable at issuing merchant
-✅ **Nostr Storage** - Public ledger (NIP-33) and private backup (NIP-17 + NIP-44)
-✅ **ED25519 Signatures** - Cryptographic voucher verification
-✅ **Offline Verification** - Merchants can verify without network access
-✅ **Double-Spend Protection** - Nostr ledger prevents voucher reuse
-✅ **NUT-13 Integration** - Works with deterministic wallet recovery
-✅ **Expiry Support** - Time-limited vouchers with automatic expiry checks
-✅ **REST API** - HTTP endpoints for voucher operations
-✅ **Comprehensive Testing** - 310+ tests with 80%+ code coverage
-✅ **Hexagonal Architecture** - Clean separation of concerns, pluggable adapters
+- **Model B Implementation** - Vouchers only redeemable at issuing merchant
+- **Nostr Storage** - Public ledger (NIP-33) and private backup (NIP-17 + NIP-44)
+- **ED25519 Signatures** - Cryptographic voucher verification
+- **Offline Verification** - Merchants can verify without network access
+- **Double-Spend Protection** - Nostr ledger prevents voucher reuse
+- **Backing Strategies** - FIXED, MINIMAL, PROPORTIONAL for different use cases
+- **Expiry Support** - Time-limited vouchers with automatic expiry checks
+- **Merchant Metadata** - Custom business data attached to vouchers
+- **Comprehensive Testing** - 310+ tests with 80%+ code coverage
+- **Hexagonal Architecture** - Clean separation of concerns, pluggable adapters
 
 ## Architecture
 
 This project follows **Hexagonal Architecture** (Ports & Adapters) with three modules:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    cashu-voucher-nostr                          │
+│               (Nostr storage implementation)                    │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │ implements ports
+┌──────────────────────────────▼──────────────────────────────────┐
+│                     cashu-voucher-app                           │
+│            (Services, ports, DTOs)                              │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │ uses domain
+┌──────────────────────────────▼──────────────────────────────────┐
+│                    cashu-voucher-domain                         │
+│            (Pure business logic, no dependencies)               │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 - **cashu-voucher-domain** - Pure domain logic (VoucherSecret, SignedVoucher, validation)
 - **cashu-voucher-app** - Application services and port interfaces
@@ -29,65 +46,45 @@ This project follows **Hexagonal Architecture** (Ports & Adapters) with three mo
 
 ## Project Status
 
-**Version**: 0.1.0 (in development)
-**Status**: Phase 4 Complete - Mint Integration
-**Progress**: 46/72 tasks complete (64%)
-**Test Coverage**: 80%+ line coverage
-**Tests Passing**: 310+ tests (domain, app, nostr, mint integration)
-
-## Modules
-
-### cashu-voucher-domain
-Pure domain logic with zero infrastructure dependencies.
-
-**Key Classes**:
-- `VoucherSecret` - Gift card voucher secret (extends BaseKey, implements Secret)
-- `SignedVoucher` - Voucher with ED25519 signature
-- `VoucherSignatureService` - Sign and verify vouchers
-- `VoucherValidator` - Validation logic (expiry, signature)
-- `VoucherStatus` - Enum (ISSUED, REDEEMED, REVOKED, EXPIRED)
-
-### cashu-voucher-app
-Application services and port interfaces (infrastructure-agnostic).
-
-**Key Classes**:
-- `VoucherService` - Main voucher service (issue, query, backup, restore)
-- `MerchantVerificationService` - Merchant-side verification (Model B)
-- `VoucherLedgerPort` - Port interface for ledger operations
-- `VoucherBackupPort` - Port interface for backup operations
-
-### cashu-voucher-nostr
-Nostr infrastructure adapter implementing port interfaces.
-
-**Key Classes**:
-- `NostrVoucherLedgerRepository` - NIP-33 ledger implementation
-- `NostrVoucherBackupRepository` - NIP-17 + NIP-44 backup implementation
-- `NostrClientAdapter` - Relay connection management
-- `VoucherLedgerEvent` - NIP-33 event mapper
-- `VoucherBackupPayload` - NIP-17 payload format
+| Metric | Value |
+|--------|-------|
+| Version | 0.3.0 |
+| Status | Phase 4 Complete - Mint Integration |
+| Progress | 46/72 tasks (64%) |
+| Test Coverage | 80%+ line coverage |
+| Tests Passing | 310+ |
 
 ## Quick Start
 
 ### Installation
 
-Add the voucher modules to your project:
+Add the voucher modules to your `pom.xml`:
 
 ```xml
-<dependency>
-    <groupId>xyz.tcheeric</groupId>
-    <artifactId>cashu-voucher-domain</artifactId>
-    <version>0.1.0</version>
-</dependency>
-<dependency>
-    <groupId>xyz.tcheeric</groupId>
-    <artifactId>cashu-voucher-app</artifactId>
-    <version>0.1.0</version>
-</dependency>
-<dependency>
-    <groupId>xyz.tcheeric</groupId>
-    <artifactId>cashu-voucher-nostr</artifactId>
-    <version>0.1.0</version>
-</dependency>
+<repositories>
+    <repository>
+        <id>reposilite-releases</id>
+        <url>https://maven.398ja.xyz/releases</url>
+    </repository>
+</repositories>
+
+<dependencies>
+    <dependency>
+        <groupId>xyz.tcheeric</groupId>
+        <artifactId>cashu-voucher-domain</artifactId>
+        <version>0.3.0</version>
+    </dependency>
+    <dependency>
+        <groupId>xyz.tcheeric</groupId>
+        <artifactId>cashu-voucher-app</artifactId>
+        <version>0.3.0</version>
+    </dependency>
+    <dependency>
+        <groupId>xyz.tcheeric</groupId>
+        <artifactId>cashu-voucher-nostr</artifactId>
+        <version>0.3.0</version>
+    </dependency>
+</dependencies>
 ```
 
 ### Issue a Voucher
@@ -105,13 +102,16 @@ VoucherService voucherService = new VoucherService(
 IssueVoucherRequest request = IssueVoucherRequest.builder()
     .issuerId("my-coffee-shop")
     .unit("sat")
-    .amount(10000L)  // 10,000 sats
+    .amount(10000L)                          // 10,000 sats
     .expiresInDays(365)
     .memo("Coffee shop gift card")
+    .backingStrategy(BackingStrategy.MINIMAL)
+    .issuanceRatio(1.0)
+    .faceDecimals(0)
     .build();
 
 IssueVoucherResponse response = voucherService.issue(request);
-String token = response.getToken();  // cashuA...
+String token = response.getToken();  // Share with customer
 ```
 
 ### Verify a Voucher (Merchant)
@@ -121,129 +121,121 @@ String token = response.getToken();  // cashuA...
 MerchantVerificationService merchantService =
     new MerchantVerificationService(ledgerPort);
 
-// Verify offline (no network)
-VerificationResult result = merchantService.verifyOffline(
+// Verify online (recommended - prevents double-spend)
+VerificationResult result = merchantService.verifyOnline(
     voucher,
     "my-coffee-shop"
 );
 
 if (result.isValid()) {
-    // Accept voucher
+    // Accept voucher and mark as redeemed
+    merchantService.markRedeemed(voucher.getSecret().getVoucherId());
 } else {
     // Reject voucher
     System.err.println(result.getErrorMessage());
 }
 ```
 
+## Documentation
+
+Comprehensive documentation is available in the [`docs/`](./docs/) directory, organized by the [Diátaxis framework](https://diataxis.fr/):
+
+### Tutorials (Learning)
+- [Getting Started](./docs/tutorials/getting-started.md) - Your first voucher
+- [Issuing with VoucherService](./docs/tutorials/issuing-vouchers-with-service.md) - Application layer usage
+- [Nostr Integration](./docs/tutorials/nostr-integration.md) - Set up Nostr storage
+
+### How-To Guides (Tasks)
+- [Issue a Voucher](./docs/how-to/issue-voucher.md) - Different issuance scenarios
+- [Verify as Merchant](./docs/how-to/verify-voucher-as-merchant.md) - Verification and redemption
+- [Backup and Restore](./docs/how-to/backup-and-restore.md) - Protect your vouchers
+- [Implement Custom Adapters](./docs/how-to/implement-custom-adapter.md) - SQL, S3, or other storage
+
+### Reference (API)
+- [Domain Entities](./docs/reference/domain-entities.md) - VoucherSecret, SignedVoucher, etc.
+- [VoucherService](./docs/reference/voucher-service.md) - Main service API
+- [MerchantVerificationService](./docs/reference/merchant-verification-service.md) - Merchant verification
+- [Ports](./docs/reference/ports.md) - VoucherLedgerPort, VoucherBackupPort
+- [Nostr Adapters](./docs/reference/nostr-adapters.md) - Nostr implementation
+- [DTOs](./docs/reference/dto.md) - Request/response objects
+
+### Explanations (Concepts)
+- [Architecture Overview](./docs/explanation/architecture.md) - Hexagonal architecture
+- [Model B Vouchers](./docs/explanation/model-b-vouchers.md) - Why merchant-only redemption
+- [Backing Strategies](./docs/explanation/backing-strategies.md) - FIXED, MINIMAL, PROPORTIONAL
+- [Nostr Integration](./docs/explanation/nostr-integration.md) - Why and how Nostr works
+
+## Modules
+
+### cashu-voucher-domain
+
+Pure domain logic with zero infrastructure dependencies.
+
+| Class | Description |
+|-------|-------------|
+| `VoucherSecret` | Gift card voucher secret (extends BaseKey, implements Secret) |
+| `SignedVoucher` | Voucher with ED25519 signature |
+| `VoucherSignatureService` | Sign and verify vouchers |
+| `VoucherValidator` | Validation logic (expiry, signature) |
+| `VoucherStatus` | Enum: ISSUED, REDEEMED, REVOKED, EXPIRED |
+| `BackingStrategy` | Enum: FIXED, MINIMAL, PROPORTIONAL |
+
+### cashu-voucher-app
+
+Application services and port interfaces (infrastructure-agnostic).
+
+| Class | Description |
+|-------|-------------|
+| `VoucherService` | Main voucher service (issue, query, backup, restore) |
+| `MerchantVerificationService` | Merchant-side verification (Model B) |
+| `VoucherLedgerPort` | Port interface for ledger operations |
+| `VoucherBackupPort` | Port interface for backup operations |
+
+### cashu-voucher-nostr
+
+Nostr infrastructure adapter implementing port interfaces.
+
+| Class | Description |
+|-------|-------------|
+| `NostrVoucherLedgerRepository` | NIP-33 ledger implementation |
+| `NostrVoucherBackupRepository` | NIP-17 + NIP-44 backup implementation |
+| `NostrClientAdapter` | Relay connection management |
+| `VoucherLedgerEvent` | NIP-33 event mapper |
+| `VoucherBackupPayload` | NIP-17 payload format |
+
 ## Building
 
 ```bash
 # Build all modules
-mvn clean install
+mvn -q verify
 
-# Run unit tests only
-mvn test
-
-# Run integration tests
-mvn verify -Pintegration-tests
+# Module build with dependencies
+mvn -q -pl cashu-voucher-app -am verify
 
 # Generate code coverage report
-mvn jacoco:report
+mvn -q jacoco:report
 ```
 
 ## Testing
 
 The project has comprehensive test coverage across all layers:
 
-- **Domain Tests**: 126 tests (VoucherSecret, SignedVoucher, signatures)
-- **App Tests**: 72 tests (VoucherService, MerchantVerification)
-- **Nostr Tests**: 112 tests (NIP-33, NIP-17, NIP-44, Testcontainers)
-- **Integration Tests**: 28+ tests (mint integration, E2E workflows)
-
-See [TESTING.md](../cashu-mint/TESTING.md) for detailed testing guide.
+| Layer | Tests | Coverage |
+|-------|-------|----------|
+| Domain | 126+ | VoucherSecret, SignedVoucher, signatures |
+| App | 72+ | VoucherService, MerchantVerification |
+| Nostr | 112+ | NIP-33, NIP-17, NIP-44, Testcontainers |
 
 ## Dependencies
 
-- **Java**: 21+
-- **Maven**: 3.9+
-- **cashu-lib**: 0.5.0
-- **nostr-java**: 0.6.0
-- **Bouncy Castle**: 1.78
-
-## Documentation
-
-### Implementation Plan
-See [gift-card-plan-final-v2.md](../cashu-mint/project/gift-card-plan-final-v2.md) for the complete implementation plan with:
-- 72 tasks across 6 phases
-- Current progress: 46/72 (64% complete)
-- Architecture decisions and rationale
-- Testing strategy
-- Timeline and milestones
-
-### Testing Guide
-See [TESTING.md](../cashu-mint/TESTING.md) for:
-- How to run unit and integration tests
-- Test naming conventions
-- Maven profiles
-- CI/CD integration
-
-### API Documentation
-- **Domain Layer**: JavaDoc in `cashu-voucher-domain/target/apidocs`
-- **Application Layer**: JavaDoc in `cashu-voucher-app/target/apidocs`
-- **Nostr Layer**: JavaDoc in `cashu-voucher-nostr/target/apidocs`
-
-Generate JavaDoc:
-```bash
-mvn javadoc:javadoc
-```
-
-## Integration
-
-### Mint Integration
-```xml
-<dependency>
-    <groupId>xyz.tcheeric</groupId>
-    <artifactId>cashu-voucher-domain</artifactId>
-    <version>0.1.0</version>
-</dependency>
-<dependency>
-    <groupId>xyz.tcheeric</groupId>
-    <artifactId>cashu-voucher-app</artifactId>
-    <version>0.1.0</version>
-</dependency>
-<dependency>
-    <groupId>xyz.tcheeric</groupId>
-    <artifactId>cashu-voucher-nostr</artifactId>
-    <version>0.1.0</version>
-    <scope>runtime</scope>
-</dependency>
-```
-
-### Wallet Integration
-Same dependencies as mint integration.
-
-### CLI Integration
-```xml
-<dependency>
-    <groupId>xyz.tcheeric</groupId>
-    <artifactId>cashu-voucher-app</artifactId>
-    <version>0.1.0</version>
-</dependency>
-```
-
-## CLI Commands
-
-### Wallet Commands
-- `cashu voucher issue` - Issue a new voucher
-- `cashu voucher list` - List all vouchers
-- `cashu voucher show` - Show voucher details
-- `cashu voucher backup` - Backup vouchers to Nostr
-- `cashu voucher restore` - Restore vouchers from Nostr
-- `cashu voucher status` - Check voucher status
-
-### Merchant Commands
-- `cashu merchant verify` - Verify voucher (offline/online)
-- `cashu merchant redeem` - Redeem voucher
+| Dependency | Version |
+|------------|---------|
+| Java | 21+ |
+| Maven | 3.9+ |
+| cashu-lib | 0.6.2 |
+| nostr-java | 1.0.1 |
+| Bouncy Castle | 1.78 |
+| Jackson | 2.17.0 |
 
 ## Model B Implementation
 
@@ -270,35 +262,42 @@ POST /v1/swap
 - **Purpose**: Public audit trail of voucher status
 
 ### Private Backup (NIP-17 + NIP-44)
-- **Kind**: 14 (private direct message)
+- **Kind**: 4 (encrypted direct message)
 - **Encryption**: NIP-44 (ChaCha20-Poly1305)
 - **Purpose**: User's private voucher backup
 
+## Backing Strategies
+
+| Strategy | Splittable | Use Case |
+|----------|------------|----------|
+| FIXED | No | Tickets, event passes |
+| MINIMAL | Yes (coarse) | Gift cards, store credit |
+| PROPORTIONAL | Yes (fine) | Split payments, group gifts |
+
 ## Roadmap
 
-### ✅ Completed (Phases 0-4)
+### Completed (Phases 0-4)
 - [x] Project structure and CI/CD
 - [x] Domain layer (VoucherSecret, SignedVoucher, validation)
 - [x] Application layer (VoucherService, MerchantVerification)
 - [x] Nostr layer (NIP-33 ledger, NIP-17 backup, NIP-44 encryption)
 - [x] Mint integration (REST API, Model B enforcement)
+- [x] Advanced backing strategies and metadata support
 
-### 🚧 In Progress
+### In Progress
 - [ ] Phase 5: Wallet & CLI (14 tasks)
-  - Wallet voucher storage
-  - CLI commands (issue, list, verify, redeem)
-  - NUT-13 recovery integration
 
-### 📋 Planned
+### Planned
 - [ ] Phase 6: Testing & Documentation (12 tasks)
-  - End-to-end tests
-  - Performance benchmarks
-  - User guides
-  - v0.1.0 release
 
-## License
+## Project Research
 
-[License TBD]
+Design documents and implementation plans are in [`project/`](./project/):
+
+- `gift-card-plan-final-v2.md` - Implementation plan
+- `voucher-architecture-diagrams.md` - Architecture diagrams
+- `voucher-api-specification.md` - API reference
+- `voucher-test-plan.md` - Test specifications
 
 ## Contributing
 
@@ -306,30 +305,24 @@ Contributions are welcome! Please:
 1. Fork the repository
 2. Create a feature branch
 3. Write tests for your changes
-4. Ensure all tests pass (`mvn verify`)
-5. Submit a pull request
+4. Ensure all tests pass (`mvn -q verify`)
+5. Follow [Conventional Commits](https://www.conventionalcommits.org/)
+6. Submit a pull request
 
-## Support
-
-For questions or issues:
-- Review the [implementation plan](../cashu-mint/project/gift-card-plan-final-v2.md)
-- Check the [testing guide](../cashu-mint/TESTING.md)
-- Open an issue on GitHub
+See [AGENTS.md](./AGENTS.md) for detailed development guidelines.
 
 ## Acknowledgments
 
-- **Cashu Protocol**: https://github.com/cashubtc/nuts
-- **Nostr Protocol**: https://github.com/nostr-protocol/nips
-- **NUT-13**: Deterministic secrets specification
-- **NIP-33**: Parameterized replaceable events
-- **NIP-17**: Private direct messages
-- **NIP-44**: Encrypted payloads (ChaCha20-Poly1305)
+- [Cashu Protocol](https://github.com/cashubtc/nuts) - NUT specifications
+- [Nostr Protocol](https://github.com/nostr-protocol/nips) - NIP specifications
+- NUT-13: Deterministic secrets
+- NIP-33: Parameterized replaceable events
+- NIP-17: Private direct messages
+- NIP-44: Encrypted payloads
 
 ---
 
-**Last Updated**: 2025-11-06
-**Version**: 0.1.0 (in development)
+**Version**: 0.3.0
 **Architecture**: Hexagonal (Ports & Adapters)
 **Test Coverage**: 80%+ line coverage
-**Tests**: 310+ passing
-**Status**: Phase 4 complete (64% overall)
+**Last Updated**: 2025-12-10
