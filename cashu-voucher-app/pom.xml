@@ -8,7 +8,7 @@
     <parent>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher</artifactId>
-        <version>0.3.3</version>
+        <version>0.3.5</version>
     </parent>
 
     <artifactId>cashu-voucher-app</artifactId>
