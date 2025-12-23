@@ -16,7 +16,7 @@ Cashu Voucher implements **Model B** gift card vouchers - vouchers that are spen
 - **Backing Strategies** - FIXED, MINIMAL, PROPORTIONAL for different use cases
 - **Expiry Support** - Time-limited vouchers with automatic expiry checks
 - **Merchant Metadata** - Custom business data attached to vouchers
-- **Comprehensive Testing** - 310+ tests with 80%+ code coverage
+- **Comprehensive Testing** - Extensive test coverage across all layers
 - **Hexagonal Architecture** - Clean separation of concerns, pluggable adapters
 
 ## Architecture
@@ -43,16 +43,6 @@ This project follows **Hexagonal Architecture** (Ports & Adapters) with three mo
 - **cashu-voucher-domain** - Pure domain logic (VoucherSecret, SignedVoucher, validation)
 - **cashu-voucher-app** - Application services and port interfaces
 - **cashu-voucher-nostr** - Nostr infrastructure adapter (NIP-33, NIP-17)
-
-## Project Status
-
-| Metric | Value |
-|--------|-------|
-| Version | 0.3.0 |
-| Status | Phase 4 Complete - Mint Integration |
-| Progress | 46/72 tasks (64%) |
-| Test Coverage | 80%+ line coverage |
-| Tests Passing | 310+ |
 
 ## Quick Start
 
@@ -274,31 +264,6 @@ POST /v1/swap
 | MINIMAL | Yes (coarse) | Gift cards, store credit |
 | PROPORTIONAL | Yes (fine) | Split payments, group gifts |
 
-## Roadmap
-
-### Completed (Phases 0-4)
-- [x] Project structure and CI/CD
-- [x] Domain layer (VoucherSecret, SignedVoucher, validation)
-- [x] Application layer (VoucherService, MerchantVerification)
-- [x] Nostr layer (NIP-33 ledger, NIP-17 backup, NIP-44 encryption)
-- [x] Mint integration (REST API, Model B enforcement)
-- [x] Advanced backing strategies and metadata support
-
-### In Progress
-- [ ] Phase 5: Wallet & CLI (14 tasks)
-
-### Planned
-- [ ] Phase 6: Testing & Documentation (12 tasks)
-
-## Project Research
-
-Design documents and implementation plans are in [`project/`](./project/):
-
-- `gift-card-plan-final-v2.md` - Implementation plan
-- `voucher-architecture-diagrams.md` - Architecture diagrams
-- `voucher-api-specification.md` - API reference
-- `voucher-test-plan.md` - Test specifications
-
 ## Contributing
 
 Contributions are welcome! Please:
@@ -320,9 +285,3 @@ See [AGENTS.md](./AGENTS.md) for detailed development guidelines.
 - NIP-17: Private direct messages
 - NIP-44: Encrypted payloads
 
----
-
-**Version**: 0.3.0
-**Architecture**: Hexagonal (Ports & Adapters)
-**Test Coverage**: 80%+ line coverage
-**Last Updated**: 2025-12-10
