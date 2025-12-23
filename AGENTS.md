@@ -61,7 +61,10 @@ When behaviour intersects these specifications, review the relevant documents an
   - Keep domain logging minimal; prefer returning rich error information instead of logging internals.
 
 Model B constraint:
-- Vouchers are not redeemable at the mint. Any attempt to use voucher material in melt/swap-like flows must be rejected with a domain-appropriate error. Redemption occurs with the issuing merchant only.
+- Vouchers can only be redeemed (for goods/services) at the issuing merchant, not at the mint.
+- Swaps at the mint are ALLOWED (essential for P2P transfers and double-spend prevention).
+- Model B enforcement happens at the APPLICATION layer (MerchantVerificationService), not the mint protocol layer.
+- The mint only enforces cryptographic validity (BDHKE signatures), while merchant apps verify issuer ID matches.
 
 ### Application (`cashu-voucher-app`)
 - Purpose: orchestrate domain use-cases and define port interfaces for infrastructure (e.g., Nostr relay I/O, persistence, clock, entropy).

@@ -24,8 +24,9 @@ import java.util.UUID;
  * vouchers are NOT deterministic and MUST be backed up to Nostr (or other storage) for recovery.
  *
  * <h3>Model B Constraint</h3>
- * <p>Vouchers cannot be redeemed at the mint. They are only redeemable with the issuing merchant.
- * Any attempt to use voucher secrets in mint swap/melt operations must be rejected.
+ * <p>Vouchers can only be redeemed (for goods/services) at the issuing merchant.
+ * Swaps at the mint are allowed and essential for P2P transfers and double-spend prevention.
+ * Model B enforcement (merchant-only redemption) happens at the application layer.
  *
  * <h3>Immutability</h3>
  * <p>This class is immutable once created. All fields are final and the canonical byte

@@ -309,17 +309,16 @@ First production release of the Cashu Voucher system implementing Model B gift c
 ### 📋 Model B Implementation
 
 #### Characteristics
-- Vouchers are **NOT redeemable at the mint**
-- Vouchers are **only spendable at the issuing merchant**
+- Vouchers are **only redeemable (for goods/services) at the issuing merchant**
+- Swaps at the mint are **allowed** (essential for P2P transfers and double-spend prevention)
 - Merchant performs offline cryptographic verification
 - Merchant queries Nostr ledger for double-spend protection
 - Redemption updates ledger status to REDEEMED
 
 #### Enforcement
-- VoucherSecretDetector in mint protocol layer
-- Swap/melt operations reject voucher secrets
-- Error message: "Vouchers cannot be redeemed at mint (Model B)"
-- Merchants use MerchantVerificationService for verification
+- Model B enforcement happens at the **application layer** (MerchantVerificationService)
+- Mint protocol allows swaps for vouchers (standard BDHKE verification)
+- Merchants use MerchantVerificationService to verify issuer ID matches
 
 ### 🔗 Nostr Integration
 

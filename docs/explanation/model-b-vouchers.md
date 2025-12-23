@@ -88,23 +88,21 @@ if (!actualIssuerId.equals(expectedIssuerId)) {
 }
 ```
 
-### Mint Rejection
+### Swap vs Redemption
 
-If someone tries to redeem a voucher at the mint:
+It's important to distinguish between **swapping** and **redeeming**:
 
-```
-POST /v1/swap
-{
-  "proofs": [{ "secret": "<VoucherSecret>", ... }]
-}
+| Operation | Allowed? | Purpose |
+|-----------|----------|---------|
+| **Swap** (`/v1/swap`) | **Yes** | Exchange proofs for fresh proofs (same value) |
+| **Redeem/Melt** | **No** | Convert voucher to Bitcoin (Model B blocks this) |
 
-→ 400 Bad Request
-{
-  "error": "VOUCHER_NOT_ACCEPTED",
-  "message": "Vouchers cannot be redeemed at mint (Model B).
-              Please redeem with issuing merchant."
-}
-```
+**Why swaps must be allowed:**
+1. **Double-spend prevention**: When Carol receives a voucher from Alice, she must swap it to get fresh proofs (prevents Alice from double-spending)
+2. **P2P transfers**: Users can send vouchers to each other
+3. **Splitting**: Re-partition proofs into different denominations
+
+**Model B enforcement happens at the APPLICATION layer** (merchant verification), not at the mint protocol layer. The mint only enforces cryptographic validity (BDHKE signatures), while the merchant application verifies the issuer ID matches.
 
 ## Technical Implementation
 
@@ -151,22 +149,27 @@ This means:
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ Layer 2: Signature Verification                             │
+│ Layer 2: Mint Protocol (BDHKE)                              │
+│   Standard cryptographic verification for swaps             │
+│   (Vouchers treated same as regular proofs)                 │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 3: Signature Verification                             │
 │   issuerId is part of signed canonical bytes                │
+│   (Issuer's Schnorr signature proves authenticity)          │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ Layer 3: Application Verification                           │
+│ Layer 4: Application Verification (Model B Enforcement)     │
 │   MerchantVerificationService checks issuer match           │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Layer 4: Mint Rejection                                     │
-│   Swap/melt endpoints reject voucher secrets                │
+│   Only the issuing merchant can redeem for goods/services   │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**Key point**: Model B enforcement happens at Layer 4 (application layer), not at the mint protocol layer. This allows vouchers to be transferred between users while ensuring only the merchant can accept them for redemption.
 
 ## Voucher Lifecycle
 
@@ -202,8 +205,14 @@ This means:
 ### What Model B Prevents
 
 1. **Cross-merchant redemption**: Voucher for Shop A can't be used at Shop B
-2. **Mint redemption**: Vouchers can't be converted to Bitcoin at mint
+2. **Mint redemption (melt)**: Vouchers can't be converted to Bitcoin at mint
 3. **Value extraction**: Gift card value stays within merchant ecosystem
+
+### What Model B Allows
+
+1. **Swapping at mint**: Essential for double-spend prevention and P2P transfers
+2. **P2P transfers**: Alice can send a voucher to Carol
+3. **Splitting**: Vouchers can be split into smaller denominations (if backing strategy allows)
 
 ### What Model B Does NOT Prevent
 
