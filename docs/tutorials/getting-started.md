@@ -35,21 +35,21 @@ Add the Cashu Voucher modules to your `pom.xml`:
     <dependency>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher-domain</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.6</version>
     </dependency>
 
     <!-- Application layer - services and ports -->
     <dependency>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher-app</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.6</version>
     </dependency>
 
     <!-- Nostr adapter - optional, for Nostr-based storage -->
     <dependency>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher-nostr</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.6</version>
     </dependency>
 </dependencies>
 ```
@@ -68,30 +68,20 @@ For basic usage, you need `domain` and `app`. Add `nostr` if you want Nostr-base
 
 ## Step 3: Generate Issuer Keys
 
-Vouchers require ED25519 keys for signing. Generate a key pair:
+Vouchers require secp256k1 keys for Schnorr signing (BIP-340, same as Nostr). Generate a key pair:
 
 ```java
-import org.bouncycastle.crypto.generators.Ed25519KeyPairGenerator;
-import org.bouncycastle.crypto.params.Ed25519KeyGenerationParameters;
-import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters;
-import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters;
+import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
-
-import java.security.SecureRandom;
 
 public class KeyGenerator {
     public static void main(String[] args) {
-        Ed25519KeyPairGenerator generator = new Ed25519KeyPairGenerator();
-        generator.init(new Ed25519KeyGenerationParameters(new SecureRandom()));
-        var keyPair = generator.generateKeyPair();
+        // Generate secp256k1 key pair (Schnorr/Nostr compatible)
+        byte[] privateKeyBytes = Schnorr.generatePrivateKey();
+        byte[] publicKeyBytes = Schnorr.genPubKey(privateKeyBytes);
 
-        Ed25519PrivateKeyParameters privateKey =
-            (Ed25519PrivateKeyParameters) keyPair.getPrivate();
-        Ed25519PublicKeyParameters publicKey =
-            (Ed25519PublicKeyParameters) keyPair.getPublic();
-
-        String privateKeyHex = Hex.toHexString(privateKey.getEncoded());
-        String publicKeyHex = Hex.toHexString(publicKey.getEncoded());
+        String privateKeyHex = Hex.toHexString(privateKeyBytes);
+        String publicKeyHex = Hex.toHexString(publicKeyBytes);
 
         System.out.println("Private Key: " + privateKeyHex);
         System.out.println("Public Key:  " + publicKeyHex);
@@ -204,7 +194,7 @@ Congratulations! You've created and verified your first voucher. Next steps:
 
 ### "Invalid signature length"
 
-ED25519 signatures must be exactly 64 bytes. Ensure your keys are properly formatted as hex strings (64 characters for 32 bytes).
+Schnorr signatures must be exactly 64 bytes. Ensure your keys are properly formatted as hex strings (64 characters for 32 bytes).
 
 ### "Face value must be positive"
 
@@ -220,7 +210,7 @@ In this tutorial, you learned:
 
 1. How to add Cashu Voucher dependencies
 2. The three-module architecture (domain, app, nostr)
-3. Generating ED25519 key pairs
+3. Generating secp256k1/Schnorr key pairs
 4. Creating a `VoucherSecret` with the builder pattern
 5. Signing vouchers with `VoucherSignatureService`
 6. Validating vouchers with `VoucherValidator`

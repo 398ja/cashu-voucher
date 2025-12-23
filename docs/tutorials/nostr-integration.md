@@ -39,7 +39,7 @@ Ensure you have the Nostr adapter dependency:
 <dependency>
     <groupId>xyz.tcheeric</groupId>
     <artifactId>cashu-voucher-nostr</artifactId>
-    <version>0.3.0</version>
+    <version>0.3.6</version>
 </dependency>
 ```
 

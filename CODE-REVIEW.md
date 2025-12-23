@@ -102,7 +102,7 @@ This code review covers the complete Cashu Voucher implementation across all thr
 
 4. **VoucherSignatureService.java** (209 lines)
    - ✅ Stateless utility class (private constructor)
-   - ✅ ED25519 signatures (industry standard)
+   - ✅ Schnorr signatures (BIP-340, Nostr-compatible)
    - ✅ Proper key length validation
    - ✅ Comprehensive error handling
    - ✅ No key material leakage in logs
@@ -348,7 +348,7 @@ This code review covers the complete Cashu Voucher implementation across all thr
 
 | Aspect | Implementation | Security Level |
 |--------|---------------|----------------|
-| **Signature Algorithm** | ED25519 | ✅ Industry standard |
+| **Signature Algorithm** | Schnorr (BIP-340) | ✅ Nostr compatible |
 | **Signature Library** | BouncyCastle 1.78 | ✅ Trusted, up-to-date |
 | **Key Length** | 32 bytes (256 bits) | ✅ Secure |
 | **Encryption (NIP-44)** | ChaCha20-Poly1305 | ✅ Modern AEAD |

@@ -100,7 +100,7 @@ Throws `IllegalArgumentException` for:
 
 ## SignedVoucher
 
-A voucher with an ED25519 cryptographic signature.
+A voucher with a BIP-340 Schnorr cryptographic signature.
 
 **Package:** `xyz.tcheeric.cashu.voucher.domain`
 
@@ -109,8 +109,8 @@ A voucher with an ED25519 cryptographic signature.
 | Field | Type | Description |
 |-------|------|-------------|
 | `secret` | `VoucherSecret` | The voucher data |
-| `issuerSignature` | `byte[]` | ED25519 signature (64 bytes) |
-| `issuerPublicKey` | `String` | Hex-encoded public key |
+| `issuerSignature` | `byte[]` | Schnorr signature (64 bytes) |
+| `issuerPublicKey` | `String` | Hex-encoded x-only public key |
 
 ### Constructor
 
@@ -126,7 +126,7 @@ SignedVoucher(
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `verify()` | `boolean` | Validates ED25519 signature |
+| `verify()` | `boolean` | Validates Schnorr signature |
 | `isExpired()` | `boolean` | Delegates to secret.isExpired() |
 | `isValid()` | `boolean` | True if signature valid AND not expired |
 | `getIssuerSignature()` | `byte[]` | Defensive copy of signature |
@@ -190,7 +190,7 @@ Enumeration for token backing and split capability.
 
 ## VoucherSignatureService
 
-Utility class for ED25519 signature operations.
+Utility class for BIP-340 Schnorr signature operations (secp256k1).
 
 **Package:** `xyz.tcheeric.cashu.voucher.domain`
 
@@ -213,9 +213,9 @@ SignedVoucher createSigned(
 
 ### Key Format
 
-- **Private Key:** Hex-encoded, 64 characters (32 bytes)
-- **Public Key:** Hex-encoded, 64 characters (32 bytes)
-- **Signature:** 64 bytes (ED25519 standard)
+- **Private Key:** Hex-encoded, 64 characters (32 bytes) - secp256k1 scalar
+- **Public Key:** Hex-encoded, 64 characters (32 bytes) - x-only secp256k1 point
+- **Signature:** 64 bytes (BIP-340 Schnorr standard)
 
 ---
 

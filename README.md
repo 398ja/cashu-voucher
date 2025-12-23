@@ -10,7 +10,7 @@ Cashu Voucher implements **Model B** gift card vouchers - vouchers that are spen
 
 - **Model B Implementation** - Vouchers only redeemable at issuing merchant
 - **Nostr Storage** - Public ledger (NIP-33) and private backup (NIP-17 + NIP-44)
-- **ED25519 Signatures** - Cryptographic voucher verification
+- **Schnorr Signatures** - BIP-340 secp256k1 cryptographic voucher verification
 - **Offline Verification** - Merchants can verify without network access
 - **Double-Spend Protection** - Nostr ledger prevents voucher reuse
 - **Backing Strategies** - FIXED, MINIMAL, PROPORTIONAL for different use cases
@@ -62,17 +62,17 @@ Add the voucher modules to your `pom.xml`:
     <dependency>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher-domain</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.6</version>
     </dependency>
     <dependency>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher-app</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.6</version>
     </dependency>
     <dependency>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher-nostr</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.6</version>
     </dependency>
 </dependencies>
 ```
@@ -164,7 +164,7 @@ Pure domain logic with zero infrastructure dependencies.
 | Class | Description |
 |-------|-------------|
 | `VoucherSecret` | Gift card voucher secret (extends BaseKey, implements Secret) |
-| `SignedVoucher` | Voucher with ED25519 signature |
+| `SignedVoucher` | Voucher with Schnorr signature |
 | `VoucherSignatureService` | Sign and verify vouchers |
 | `VoucherValidator` | Validation logic (expiry, signature) |
 | `VoucherStatus` | Enum: ISSUED, REDEEMED, REVOKED, EXPIRED |
@@ -222,8 +222,8 @@ The project has comprehensive test coverage across all layers:
 |------------|---------|
 | Java | 21+ |
 | Maven | 3.9+ |
-| cashu-lib | 0.6.2 |
-| nostr-java | 1.0.1 |
+| cashu-lib | 0.9.1 |
+| nostr-java | 1.1.0 |
 | Bouncy Castle | 1.78 |
 | Jackson | 2.17.0 |
 
@@ -263,6 +263,24 @@ POST /v1/swap
 | FIXED | No | Tickets, event passes |
 | MINIMAL | Yes (coarse) | Gift cards, store credit |
 | PROPORTIONAL | Yes (fine) | Split payments, group gifts |
+
+## TODO
+
+### Integration Tests
+
+The following integration tests fail without live Nostr relay connections:
+
+| Test Class | Tests | Issue |
+|------------|-------|-------|
+| `NostrClientAdapterIntegrationTest` | 5 | Requires live Nostr relay |
+| `VoucherNostrIT` | 6 | End-to-end relay integration |
+
+**Planned fixes:**
+- [ ] Add `@Tag("integration")` to skip in CI builds
+- [ ] Configure Testcontainers with local Nostr relay (e.g., `nostr-rs-relay`)
+- [ ] Add CI workflow for integration tests with relay container
+
+**Note:** All unit tests pass. Integration test failures are expected in isolated environments.
 
 ## Contributing
 

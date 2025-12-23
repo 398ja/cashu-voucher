@@ -37,7 +37,7 @@ public VerificationResult verifyOffline(
 
 **Checks performed:**
 1. Issuer ID matches `expectedIssuerId` (Model B constraint)
-2. ED25519 signature is cryptographically valid
+2. Schnorr signature is cryptographically valid (BIP-340)
 3. Voucher has not expired
 
 **Parameters:**
@@ -253,7 +253,7 @@ VerificationResult.failure(List<String> errors)
                               │
                               ▼
               ┌───────────────────────────────┐
-              │   2. Verify ED25519 signature │
+              │   2. Verify Schnorr signature │
               └───────────────┬───────────────┘
                               │
                               ▼

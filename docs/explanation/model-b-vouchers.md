@@ -183,7 +183,7 @@ This means:
 │                    Merchant Verification                    │
 │                                                             │
 │  1. Check issuer ID matches merchant ID                     │
-│  2. Verify ED25519 signature                                │
+│  2. Verify Schnorr signature                                │
 │  3. Check expiry timestamp                                  │
 │  4. Query ledger status (online verification)               │
 │                                                             │

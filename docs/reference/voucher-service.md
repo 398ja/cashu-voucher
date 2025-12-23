@@ -21,8 +21,8 @@ The `VoucherService` is the main application service that orchestrates voucher o
 public VoucherService(
     VoucherLedgerPort ledgerPort,          // Required: public ledger operations
     VoucherBackupPort backupPort,          // Required: private backup operations
-    String mintIssuerPrivateKey,           // Required: hex-encoded ED25519 private key
-    String mintIssuerPublicKey             // Required: hex-encoded ED25519 public key
+    String mintIssuerPrivateKey,           // Required: hex-encoded secp256k1 private key
+    String mintIssuerPublicKey             // Required: hex-encoded secp256k1 public key
 )
 ```
 
@@ -32,8 +32,8 @@ public VoucherService(
 |-----------|------|-------------|
 | `ledgerPort` | `VoucherLedgerPort` | Port for public ledger operations |
 | `backupPort` | `VoucherBackupPort` | Port for private backup operations |
-| `mintIssuerPrivateKey` | `String` | Hex-encoded 32-byte ED25519 private key |
-| `mintIssuerPublicKey` | `String` | Hex-encoded 32-byte ED25519 public key |
+| `mintIssuerPrivateKey` | `String` | Hex-encoded 32-byte secp256k1 private key |
+| `mintIssuerPublicKey` | `String` | Hex-encoded 32-byte secp256k1 x-only public key |
 
 ### Exceptions
 

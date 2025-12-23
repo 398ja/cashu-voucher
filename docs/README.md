@@ -117,17 +117,17 @@ Add to your `pom.xml`:
     <dependency>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher-domain</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.6</version>
     </dependency>
     <dependency>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher-app</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.6</version>
     </dependency>
     <dependency>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher-nostr</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.6</version>
     </dependency>
 </dependencies>
 ```
@@ -176,4 +176,4 @@ if (result.isValid()) {
 
 ---
 
-*Documentation version: 0.3.0*
+*Documentation version: 0.3.6*
