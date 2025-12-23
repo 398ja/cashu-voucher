@@ -8,7 +8,7 @@
     <parent>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher</artifactId>
-        <version>0.3.5</version>
+        <version>0.3.6</version>
     </parent>
 
     <artifactId>cashu-voucher-app</artifactId>
@@ -83,6 +83,13 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Nostr Schnorr signatures (secp256k1) - for test key generation -->
+        <dependency>
+            <groupId>xyz.tcheeric</groupId>
+            <artifactId>nostr-java-crypto</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

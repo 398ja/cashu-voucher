@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.3.6] - 2025-12-23
+
+### Changed
+
+- Updated nostr-java dependency from 1.0.1 to 1.1.0
+- Updated cashu-lib dependency from 0.8.1 to 0.9.1
+- Centralized nostr-java-crypto version in parent POM
+
+### Fixed
+
+- Fixed MerchantVerificationServiceTest using Ed25519 instead of secp256k1/Schnorr for key generation
+- Added nostr-java-crypto test dependency to cashu-voucher-app module
+
+---
+
 ### 🎯 Planned for v0.1.1
 - Fix integration test failures in NostrClientAdapterIntegrationTest
 - Add SECURITY.md with threat model and key management guide
@@ -467,5 +484,7 @@ This is the initial release. No migration needed.
 
 ---
 
-[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.6...HEAD
+[0.3.6]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.5...cashu-voucher-v0.3.6
+[0.3.2]: https://github.com/yourusername/cashu-voucher/compare/v0.1.0...cashu-voucher-v0.3.2
 [0.1.0]: https://github.com/yourusername/cashu-voucher/releases/tag/v0.1.0

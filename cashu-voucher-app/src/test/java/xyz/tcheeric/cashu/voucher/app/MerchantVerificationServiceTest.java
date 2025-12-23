@@ -1,6 +1,6 @@
 package xyz.tcheeric.cashu.voucher.app;
 
-import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters;
+import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,7 +19,6 @@ import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 
-import java.security.SecureRandom;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -46,13 +45,9 @@ class MerchantVerificationServiceTest {
 
     @BeforeAll
     static void setupKeys() {
-        // Generate a real ED25519 key pair for valid signatures
-        SecureRandom random = new SecureRandom();
-        byte[] privateKeyBytes = new byte[32];
-        random.nextBytes(privateKeyBytes);
-
-        Ed25519PrivateKeyParameters privateKey = new Ed25519PrivateKeyParameters(privateKeyBytes, 0);
-        byte[] publicKeyBytes = privateKey.generatePublicKey().getEncoded();
+        // Generate a test secp256k1 key pair (Schnorr/Nostr compatible)
+        byte[] privateKeyBytes = Schnorr.generatePrivateKey();
+        byte[] publicKeyBytes = Schnorr.genPubKey(privateKeyBytes);
 
         ISSUER_PRIVKEY = Hex.toHexString(privateKeyBytes);
         ISSUER_PUBKEY = Hex.toHexString(publicKeyBytes);

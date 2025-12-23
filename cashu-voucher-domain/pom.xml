@@ -8,7 +8,7 @@
     <parent>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher</artifactId>
-        <version>0.3.5</version>
+        <version>0.3.6</version>
     </parent>
 
     <artifactId>cashu-voucher-domain</artifactId>
@@ -38,7 +38,6 @@
         <dependency>
             <groupId>xyz.tcheeric</groupId>
             <artifactId>nostr-java-crypto</artifactId>
-            <version>1.1.0</version>
         </dependency>
 
         <!-- Jackson for CBOR serialization -->
