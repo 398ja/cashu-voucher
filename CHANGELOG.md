@@ -11,6 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.7] - 2025-12-28
+
+### Fixed
+
+- **VoucherLedgerEvent**: Fixed NIP-33 tags not being serialized in published events
+  - Now uses `addTag(BaseTag.create())` to set tags on parent GenericEvent
+  - Previously stored tags in private field that wasn't used by nostr-java serialization
+  - Enables proper d-tag, status, amount, unit tags for voucher queryability
+
+### Changed
+
+- Added CLAUDE.md for Claude Code guidance
+- Updated .gitignore to exclude AGENTS.md
+
+---
+
 ## [0.3.6] - 2025-12-23
 
 ### Changed
@@ -483,7 +499,8 @@ This is the initial release. No migration needed.
 
 ---
 
-[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.6...HEAD
+[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.7...HEAD
+[0.3.7]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.6...cashu-voucher-v0.3.7
 [0.3.6]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.5...cashu-voucher-v0.3.6
 [0.3.2]: https://github.com/yourusername/cashu-voucher/compare/v0.1.0...cashu-voucher-v0.3.2
 [0.1.0]: https://github.com/yourusername/cashu-voucher/releases/tag/v0.1.0

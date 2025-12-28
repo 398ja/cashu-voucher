@@ -7,7 +7,7 @@
 
     <groupId>xyz.tcheeric</groupId>
     <artifactId>cashu-voucher</artifactId>
-    <version>0.3.6</version>
+    <version>0.3.7</version>
     <packaging>pom</packaging>
 
     <name>Cashu Voucher</name>
