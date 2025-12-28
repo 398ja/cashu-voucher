@@ -7,13 +7,15 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import nostr.base.GenericTagQuery;
+import nostr.base.ElementAttribute;
+import nostr.event.BaseTag;
 import nostr.event.impl.GenericEvent;
+import nostr.event.tag.GenericTag;
+import nostr.event.tag.IdentifierTag;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 import xyz.tcheeric.cashu.voucher.nostr.VoucherNostrException;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -118,20 +120,16 @@ public class VoucherLedgerEvent extends GenericEvent {
         // Note: setPubKey needs to be called with actual PublicKey object by the repository
         event.setCreatedAt(System.currentTimeMillis() / 1000);
 
-        // Build tags as List<List<String>> (will be converted to BaseTag by library)
-        List<List<String>> tagsList = new ArrayList<>();
-        tagsList.add(List.of("d", D_TAG_PREFIX + voucherId));
-        tagsList.add(List.of(TAG_STATUS, status.name()));
-        tagsList.add(List.of(TAG_AMOUNT, String.valueOf(voucherPayload.getFaceValue())));
-        tagsList.add(List.of(TAG_UNIT, voucherPayload.getUnit()));
+        // Add tags using BaseTag.create() so they are properly serialized by nostr-java
+        // NIP-33 requires 'd' tag for replaceable events
+        event.addTag(BaseTag.create("d", D_TAG_PREFIX + voucherId));
+        event.addTag(BaseTag.create(TAG_STATUS, status.name()));
+        event.addTag(BaseTag.create(TAG_AMOUNT, String.valueOf(voucherPayload.getFaceValue())));
+        event.addTag(BaseTag.create(TAG_UNIT, voucherPayload.getUnit()));
 
         if (voucherPayload.getExpiresAt() != null) {
-            tagsList.add(List.of(TAG_EXPIRY, String.valueOf(voucherPayload.getExpiresAt())));
+            event.addTag(BaseTag.create(TAG_EXPIRY, String.valueOf(voucherPayload.getExpiresAt())));
         }
-
-        // Note: setTags expects List<BaseTag> - conversion handled by repository
-        // For now, store in a way that can be accessed
-        event.setNip01Tags(tagsList);
 
         // Serialize voucher to JSON content
         try {
@@ -144,7 +142,7 @@ public class VoucherLedgerEvent extends GenericEvent {
             throw new VoucherNostrException("Failed to serialize voucher", e);
         }
 
-        log.debug("Created VoucherLedgerEvent: kind={}, tags={}", event.getKind(), tagsList.size());
+        log.debug("Created VoucherLedgerEvent: kind={}, tags={}", event.getKind(), event.getTags().size());
         return event;
     }
 
@@ -246,36 +244,36 @@ public class VoucherLedgerEvent extends GenericEvent {
     }
 
     /**
-     * Helper to get a tag value from NIP-01 tags.
+     * Helper to get a tag value from the parent GenericEvent's tags.
      *
-     * @param tagName the tag name
-     * @return the first value, or null if not found
+     * <p>Handles both GenericTag (for custom tags like status, amount, unit) and
+     * IdentifierTag (for the "d" tag which is registered in nostr-java's TagRegistry).
+     *
+     * @param tagName the tag name (code)
+     * @return the first parameter value, or null if not found
      */
     private String getTagValue(String tagName) {
-        List<List<String>> tags = getNip01Tags();
-        if (tags == null) {
+        List<BaseTag> tags = super.getTags();
+        if (tags == null || tags.isEmpty()) {
             return null;
         }
 
-        for (List<String> tag : tags) {
-            if (!tag.isEmpty() && tag.get(0).equals(tagName) && tag.size() > 1) {
-                return tag.get(1);
+        for (BaseTag tag : tags) {
+            if (tag.getCode() != null && tag.getCode().equals(tagName)) {
+                // Handle IdentifierTag (registered for "d" tag in nostr-java)
+                if (tag instanceof IdentifierTag identifierTag) {
+                    return identifierTag.getUuid();
+                }
+                // Handle GenericTag (for unregistered tags like status, amount, unit)
+                if (tag instanceof GenericTag genericTag) {
+                    List<ElementAttribute> attrs = genericTag.getAttributes();
+                    if (attrs != null && !attrs.isEmpty()) {
+                        return attrs.get(0).value().toString();
+                    }
+                }
             }
         }
         return null;
-    }
-
-    /**
-     * Sets the NIP-01 style tags (temporary storage until converted to BaseTag).
-     */
-    private List<List<String>> nip01Tags;
-
-    private void setNip01Tags(List<List<String>> tags) {
-        this.nip01Tags = tags;
-    }
-
-    private List<List<String>> getNip01Tags() {
-        return this.nip01Tags;
     }
 
     /**

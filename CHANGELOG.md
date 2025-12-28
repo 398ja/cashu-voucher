@@ -11,6 +11,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.7] - 2025-12-28
+
+### Fixed
+
+- **VoucherLedgerEvent**: Fixed NIP-33 tags not being serialized in published events
+  - Now uses `addTag(BaseTag.create())` to set tags on parent GenericEvent
+  - Previously stored tags in private field that wasn't used by nostr-java serialization
+  - Enables proper d-tag, status, amount, unit tags for voucher queryability
+
+- **JaCoCo Plugin**: Moved rules configuration to plugin-level for CLI compatibility
+  - Fixes `mvn jacoco:check` failing with "parameters 'rules' are missing or invalid"
+
+### Refactored
+
+- **VoucherLedgerEvent**: Eliminated duplicate tag storage
+  - Removed `nip01Tags` private field; now uses only parent GenericEvent's tag storage
+  - Refactored `getTagValue()` to handle both `IdentifierTag` (for NIP-33 "d" tag) and `GenericTag` (for custom tags)
+  - nostr-java's TagRegistry auto-converts "d" tag to IdentifierTag with `getUuid()` accessor
+
+### Changed
+
+- Added CLAUDE.md for Claude Code guidance
+- Updated .gitignore to exclude AGENTS.md
+
+---
+
 ## [0.3.6] - 2025-12-23
 
 ### Changed
@@ -309,17 +335,16 @@ First production release of the Cashu Voucher system implementing Model B gift c
 ### 📋 Model B Implementation
 
 #### Characteristics
-- Vouchers are **NOT redeemable at the mint**
-- Vouchers are **only spendable at the issuing merchant**
+- Vouchers are **only redeemable (for goods/services) at the issuing merchant**
+- Swaps at the mint are **allowed** (essential for P2P transfers and double-spend prevention)
 - Merchant performs offline cryptographic verification
 - Merchant queries Nostr ledger for double-spend protection
 - Redemption updates ledger status to REDEEMED
 
 #### Enforcement
-- VoucherSecretDetector in mint protocol layer
-- Swap/melt operations reject voucher secrets
-- Error message: "Vouchers cannot be redeemed at mint (Model B)"
-- Merchants use MerchantVerificationService for verification
+- Model B enforcement happens at the **application layer** (MerchantVerificationService)
+- Mint protocol allows swaps for vouchers (standard BDHKE verification)
+- Merchants use MerchantVerificationService to verify issuer ID matches
 
 ### 🔗 Nostr Integration
 
@@ -484,7 +509,8 @@ This is the initial release. No migration needed.
 
 ---
 
-[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.6...HEAD
+[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.7...HEAD
+[0.3.7]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.6...cashu-voucher-v0.3.7
 [0.3.6]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.5...cashu-voucher-v0.3.6
 [0.3.2]: https://github.com/yourusername/cashu-voucher/compare/v0.1.0...cashu-voucher-v0.3.2
 [0.1.0]: https://github.com/yourusername/cashu-voucher/releases/tag/v0.1.0

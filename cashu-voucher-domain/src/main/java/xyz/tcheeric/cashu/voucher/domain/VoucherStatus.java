@@ -19,8 +19,9 @@ package xyz.tcheeric.cashu.voucher.domain;
  * </ul>
  *
  * <h3>Model B Constraints</h3>
- * <p>In Model B, vouchers can only be redeemed at the issuing merchant.
- * The mint will reject any swap/melt operations with voucher secrets.
+ * <p>In Model B, vouchers can only be redeemed (for goods/services) at the issuing merchant.
+ * Swaps at the mint are allowed (essential for P2P transfers and double-spend prevention).
+ * Model B enforcement happens at the application layer (merchant verification), not the mint.
  *
  * @see VoucherSecret
  * @see SignedVoucher
