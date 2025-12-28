@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **JaCoCo Plugin**: Moved rules configuration to plugin-level for CLI compatibility
   - Fixes `mvn jacoco:check` failing with "parameters 'rules' are missing or invalid"
 
+### Refactored
+
+- **VoucherLedgerEvent**: Eliminated duplicate tag storage
+  - Removed `nip01Tags` private field; now uses only parent GenericEvent's tag storage
+  - Refactored `getTagValue()` to handle both `IdentifierTag` (for NIP-33 "d" tag) and `GenericTag` (for custom tags)
+  - nostr-java's TagRegistry auto-converts "d" tag to IdentifierTag with `getUuid()` accessor
+
 ### Changed
 
 - Added CLAUDE.md for Claude Code guidance
