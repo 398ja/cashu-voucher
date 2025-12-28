@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import nostr.base.GenericTagQuery;
+import nostr.event.BaseTag;
 import nostr.event.impl.GenericEvent;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
@@ -118,19 +119,26 @@ public class VoucherLedgerEvent extends GenericEvent {
         // Note: setPubKey needs to be called with actual PublicKey object by the repository
         event.setCreatedAt(System.currentTimeMillis() / 1000);
 
-        // Build tags as List<List<String>> (will be converted to BaseTag by library)
+        // Add tags using BaseTag.create() so they are properly serialized by nostr-java
+        // NIP-33 requires 'd' tag for replaceable events
+        event.addTag(BaseTag.create("d", D_TAG_PREFIX + voucherId));
+        event.addTag(BaseTag.create(TAG_STATUS, status.name()));
+        event.addTag(BaseTag.create(TAG_AMOUNT, String.valueOf(voucherPayload.getFaceValue())));
+        event.addTag(BaseTag.create(TAG_UNIT, voucherPayload.getUnit()));
+
+        if (voucherPayload.getExpiresAt() != null) {
+            event.addTag(BaseTag.create(TAG_EXPIRY, String.valueOf(voucherPayload.getExpiresAt())));
+        }
+
+        // Also store in nip01Tags for internal use by getTagValue()
         List<List<String>> tagsList = new ArrayList<>();
         tagsList.add(List.of("d", D_TAG_PREFIX + voucherId));
         tagsList.add(List.of(TAG_STATUS, status.name()));
         tagsList.add(List.of(TAG_AMOUNT, String.valueOf(voucherPayload.getFaceValue())));
         tagsList.add(List.of(TAG_UNIT, voucherPayload.getUnit()));
-
         if (voucherPayload.getExpiresAt() != null) {
             tagsList.add(List.of(TAG_EXPIRY, String.valueOf(voucherPayload.getExpiresAt())));
         }
-
-        // Note: setTags expects List<BaseTag> - conversion handled by repository
-        // For now, store in a way that can be accessed
         event.setNip01Tags(tagsList);
 
         // Serialize voucher to JSON content
@@ -144,7 +152,7 @@ public class VoucherLedgerEvent extends GenericEvent {
             throw new VoucherNostrException("Failed to serialize voucher", e);
         }
 
-        log.debug("Created VoucherLedgerEvent: kind={}, tags={}", event.getKind(), tagsList.size());
+        log.debug("Created VoucherLedgerEvent: kind={}, tags={}", event.getKind(), event.getTags().size());
         return event;
     }
 
