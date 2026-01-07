@@ -3,9 +3,9 @@ package xyz.tcheeric.cashu.voucher.nostr;
 import nostr.base.PublicKey;
 import nostr.event.impl.GenericEvent;
 import org.junit.jupiter.api.*;
+import xyz.tcheeric.cashu.common.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
-import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 
@@ -317,18 +317,18 @@ class NostrVoucherLedgerRepositoryTest {
      * Helper method to create a test voucher with expiry.
      */
     private SignedVoucher createTestVoucher(String voucherId, Long expiresAt) {
-        VoucherSecret secret = VoucherSecret.create(
-                voucherId,
-                ISSUER_ID,
-                UNIT,
-                FACE_VALUE,
-                expiresAt,
-                "Test voucher",
-                BackingStrategy.FIXED,
-                1.0,
-                0,
-                null
-        );
+        java.util.UUID id = java.util.UUID.nameUUIDFromBytes(voucherId.getBytes());
+        VoucherSecret secret = VoucherSecret.builder()
+                .voucherId(id)
+                .issuerId(ISSUER_ID)
+                .unit(UNIT)
+                .faceValue(FACE_VALUE)
+                .expiresAt(expiresAt)
+                .memo("Test voucher")
+                .backingStrategy(BackingStrategy.FIXED.name())
+                .issuanceRatio(1.0)
+                .faceDecimals(0)
+                .build();
 
         return VoucherSignatureService.createSigned(
                 secret,

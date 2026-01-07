@@ -6,9 +6,11 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import xyz.tcheeric.cashu.common.VoucherSecret;
 
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -52,21 +54,36 @@ class VoucherSignatureServiceTest {
      */
     private VoucherSecret createVoucherSecret(String issuerId, String unit, long faceValue,
                                               Long expiresAt, String memo) {
-        return VoucherSecret.create(
-                issuerId, unit, faceValue, expiresAt, memo,
-                DEFAULT_STRATEGY, DEFAULT_ISSUANCE_RATIO, DEFAULT_FACE_DECIMALS, null
-        );
+        return VoucherSecret.builder()
+                .issuerId(issuerId)
+                .unit(unit)
+                .faceValue(faceValue)
+                .expiresAt(expiresAt)
+                .memo(memo)
+                .backingStrategy(DEFAULT_STRATEGY.name())
+                .issuanceRatio(DEFAULT_ISSUANCE_RATIO)
+                .faceDecimals(DEFAULT_FACE_DECIMALS)
+                .build();
     }
 
     /**
      * Helper method to create a VoucherSecret with specified voucher ID.
+     * Converts arbitrary strings to deterministic UUIDs for testing.
      */
     private VoucherSecret createVoucherSecretWithId(String voucherId, String issuerId, String unit,
                                                     long faceValue, Long expiresAt, String memo) {
-        return VoucherSecret.create(
-                voucherId, issuerId, unit, faceValue, expiresAt, memo,
-                DEFAULT_STRATEGY, DEFAULT_ISSUANCE_RATIO, DEFAULT_FACE_DECIMALS, null
-        );
+        UUID id = UUID.nameUUIDFromBytes(voucherId.getBytes());
+        return VoucherSecret.builder()
+                .voucherId(id)
+                .issuerId(issuerId)
+                .unit(unit)
+                .faceValue(faceValue)
+                .expiresAt(expiresAt)
+                .memo(memo)
+                .backingStrategy(DEFAULT_STRATEGY.name())
+                .issuanceRatio(DEFAULT_ISSUANCE_RATIO)
+                .faceDecimals(DEFAULT_FACE_DECIMALS)
+                .build();
     }
 
     @Nested
@@ -268,19 +285,16 @@ class VoucherSignatureServiceTest {
             VoucherSecret originalSecret = createVoucherSecretWithId("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
             byte[] signature = VoucherSignatureService.sign(originalSecret, issuerPrivateKeyHex);
 
-            // Create modified secret
-            VoucherSecret modifiedSecret = VoucherSecret.create(
-                    "test-id",
-                    ISSUER_ID,
-                    UNIT,
-                    FACE_VALUE + 1000, // Modified
-                    null,
-                    null,
-                    DEFAULT_STRATEGY,
-                    DEFAULT_ISSUANCE_RATIO,
-                    DEFAULT_FACE_DECIMALS,
-                    null
-            );
+            // Create modified secret with same ID but different face value
+            VoucherSecret modifiedSecret = VoucherSecret.builder()
+                    .voucherId(UUID.nameUUIDFromBytes("test-id".getBytes()))
+                    .issuerId(ISSUER_ID)
+                    .unit(UNIT)
+                    .faceValue(FACE_VALUE + 1000) // Modified
+                    .backingStrategy(DEFAULT_STRATEGY.name())
+                    .issuanceRatio(DEFAULT_ISSUANCE_RATIO)
+                    .faceDecimals(DEFAULT_FACE_DECIMALS)
+                    .build();
 
             // When
             boolean valid = VoucherSignatureService.verify(modifiedSecret, signature, issuerPublicKeyHex);
@@ -654,14 +668,22 @@ class VoucherSignatureServiceTest {
         @DisplayName("should handle different backing strategies")
         void shouldHandleDifferentBackingStrategies() {
             // Given
-            VoucherSecret secretFixed = VoucherSecret.create(
-                    ISSUER_ID, UNIT, FACE_VALUE, null, null,
-                    BackingStrategy.FIXED, DEFAULT_ISSUANCE_RATIO, DEFAULT_FACE_DECIMALS, null
-            );
-            VoucherSecret secretProportional = VoucherSecret.create(
-                    ISSUER_ID, UNIT, FACE_VALUE, null, null,
-                    BackingStrategy.PROPORTIONAL, DEFAULT_ISSUANCE_RATIO, DEFAULT_FACE_DECIMALS, null
-            );
+            VoucherSecret secretFixed = VoucherSecret.builder()
+                    .issuerId(ISSUER_ID)
+                    .unit(UNIT)
+                    .faceValue(FACE_VALUE)
+                    .backingStrategy(BackingStrategy.FIXED.name())
+                    .issuanceRatio(DEFAULT_ISSUANCE_RATIO)
+                    .faceDecimals(DEFAULT_FACE_DECIMALS)
+                    .build();
+            VoucherSecret secretProportional = VoucherSecret.builder()
+                    .issuerId(ISSUER_ID)
+                    .unit(UNIT)
+                    .faceValue(FACE_VALUE)
+                    .backingStrategy(BackingStrategy.PROPORTIONAL.name())
+                    .issuanceRatio(DEFAULT_ISSUANCE_RATIO)
+                    .faceDecimals(DEFAULT_FACE_DECIMALS)
+                    .build();
 
             // When
             byte[] signatureFixed = VoucherSignatureService.sign(secretFixed, issuerPrivateKeyHex);
@@ -681,11 +703,15 @@ class VoucherSignatureServiceTest {
         @DisplayName("should handle voucher with merchant metadata")
         void shouldHandleVoucherWithMerchantMetadata() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(
-                    ISSUER_ID, UNIT, FACE_VALUE, null, null,
-                    DEFAULT_STRATEGY, DEFAULT_ISSUANCE_RATIO, DEFAULT_FACE_DECIMALS,
-                    java.util.Map.of("event", "Concert", "seat", "A12")
-            );
+            VoucherSecret secret = VoucherSecret.builder()
+                    .issuerId(ISSUER_ID)
+                    .unit(UNIT)
+                    .faceValue(FACE_VALUE)
+                    .backingStrategy(DEFAULT_STRATEGY.name())
+                    .issuanceRatio(DEFAULT_ISSUANCE_RATIO)
+                    .faceDecimals(DEFAULT_FACE_DECIMALS)
+                    .merchantMetadata("{\"event\":\"Concert\",\"seat\":\"A12\"}")
+                    .build();
 
             // When
             byte[] signature = VoucherSignatureService.sign(secret, issuerPrivateKeyHex);

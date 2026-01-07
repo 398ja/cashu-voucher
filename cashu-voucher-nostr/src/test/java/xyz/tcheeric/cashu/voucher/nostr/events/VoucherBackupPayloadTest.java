@@ -3,9 +3,9 @@ package xyz.tcheeric.cashu.voucher.nostr.events;
 import nostr.event.impl.GenericEvent;
 import nostr.id.Identity;
 import org.junit.jupiter.api.*;
+import xyz.tcheeric.cashu.common.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
-import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
 import xyz.tcheeric.cashu.voucher.nostr.VoucherNostrException;
 
@@ -258,7 +258,9 @@ class VoucherBackupPayloadTest {
 
             assertNotNull(extracted);
             assertEquals(1, extracted.size());
-            assertEquals("voucher-1", extracted.get(0).getSecret().getVoucherId());
+            // VoucherId is now a UUID generated from the string
+            java.util.UUID expectedId = java.util.UUID.nameUUIDFromBytes("voucher-1".getBytes());
+            assertEquals(expectedId, extracted.get(0).getSecret().getVoucherId());
         }
 
         @Test
@@ -496,18 +498,17 @@ class VoucherBackupPayloadTest {
      * Helper method to create a test voucher.
      */
     private SignedVoucher createTestVoucher(String voucherId, long faceValue) {
-        VoucherSecret secret = VoucherSecret.create(
-                voucherId,
-                ISSUER_ID,
-                UNIT,
-                faceValue,
-                null,
-                "Test voucher " + voucherId,
-                BackingStrategy.FIXED,
-                1.0,
-                0,
-                null
-        );
+        java.util.UUID id = java.util.UUID.nameUUIDFromBytes(voucherId.getBytes());
+        VoucherSecret secret = VoucherSecret.builder()
+                .voucherId(id)
+                .issuerId(ISSUER_ID)
+                .unit(UNIT)
+                .faceValue(faceValue)
+                .memo("Test voucher " + voucherId)
+                .backingStrategy(BackingStrategy.FIXED.name())
+                .issuanceRatio(1.0)
+                .faceDecimals(0)
+                .build();
 
         return VoucherSignatureService.createSigned(
                 secret,

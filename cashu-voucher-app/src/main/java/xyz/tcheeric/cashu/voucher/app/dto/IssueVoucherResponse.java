@@ -48,7 +48,8 @@ public class IssueVoucherResponse {
      * Equivalent to voucher.getSecret().getVoucherId()
      */
     public String getVoucherId() {
-        return voucher != null ? voucher.getSecret().getVoucherId() : null;
+        return voucher != null && voucher.getSecret().getVoucherId() != null
+                ? voucher.getSecret().getVoucherId().toString() : null;
     }
 
     /**

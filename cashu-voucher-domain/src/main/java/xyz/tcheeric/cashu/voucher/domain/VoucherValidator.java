@@ -3,6 +3,7 @@ package xyz.tcheeric.cashu.voucher.domain;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NonNull;
+import xyz.tcheeric.cashu.common.VoucherSecret;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -22,7 +23,7 @@ import java.util.List;
  * <h3>Validation Rules</h3>
  * <p>A voucher is considered valid if ALL of the following conditions are met:
  * <ol>
- *   <li>The issuer's signature is cryptographically valid (ED25519 verification)</li>
+ *   <li>The issuer's signature is cryptographically valid (Schnorr verification)</li>
  *   <li>The voucher has not expired (if expiry is set)</li>
  *   <li>The face value is positive</li>
  * </ol>
@@ -147,6 +148,7 @@ public final class VoucherValidator {
      */
     public static ValidationResult validate(@NonNull SignedVoucher voucher) {
         List<String> errors = new ArrayList<>();
+        VoucherSecret secret = voucher.getSecret();
 
         // Validate signature
         if (!voucher.verify()) {
@@ -159,7 +161,8 @@ public final class VoucherValidator {
         }
 
         // Validate face value
-        if (voucher.getSecret().getFaceValue() <= 0) {
+        Long faceValue = secret.getFaceValue();
+        if (faceValue == null || faceValue <= 0) {
             errors.add("Invalid face value: must be positive");
         }
 
@@ -169,17 +172,19 @@ public final class VoucherValidator {
         }
 
         // Validate voucher ID is not blank
-        if (voucher.getSecret().getVoucherId() == null || voucher.getSecret().getVoucherId().isBlank()) {
-            errors.add("Voucher ID is missing or blank");
+        if (secret.getVoucherId() == null) {
+            errors.add("Voucher ID is missing");
         }
 
         // Validate issuer ID is not blank
-        if (voucher.getSecret().getIssuerId() == null || voucher.getSecret().getIssuerId().isBlank()) {
+        String issuerId = secret.getIssuerId();
+        if (issuerId == null || issuerId.isBlank()) {
             errors.add("Issuer ID is missing or blank");
         }
 
         // Validate unit is not blank
-        if (voucher.getSecret().getUnit() == null || voucher.getSecret().getUnit().isBlank()) {
+        String unit = secret.getUnit();
+        if (unit == null || unit.isBlank()) {
             errors.add("Unit is missing or blank");
         }
 
@@ -211,9 +216,10 @@ public final class VoucherValidator {
         }
 
         // Check issuer ID matches
-        if (!voucher.getSecret().getIssuerId().equals(expectedIssuerId)) {
+        String actualIssuerId = voucher.getSecret().getIssuerId();
+        if (!expectedIssuerId.equals(actualIssuerId)) {
             return ValidationResult.failure(
-                    "Voucher was issued by '" + voucher.getSecret().getIssuerId() +
+                    "Voucher was issued by '" + actualIssuerId +
                             "' but expected issuer is '" + expectedIssuerId + "'"
             );
         }

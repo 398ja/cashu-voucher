@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import xyz.tcheeric.cashu.common.VoucherSecret;
 
 import java.time.Instant;
 
@@ -51,10 +52,16 @@ class VoucherValidatorTest {
      */
     private VoucherSecret createVoucherSecret(String issuerId, String unit, long faceValue,
                                               Long expiresAt, String memo) {
-        return VoucherSecret.create(
-                issuerId, unit, faceValue, expiresAt, memo,
-                DEFAULT_STRATEGY, DEFAULT_ISSUANCE_RATIO, DEFAULT_FACE_DECIMALS, null
-        );
+        return VoucherSecret.builder()
+                .issuerId(issuerId)
+                .unit(unit)
+                .faceValue(faceValue)
+                .expiresAt(expiresAt)
+                .memo(memo)
+                .backingStrategy(DEFAULT_STRATEGY.name())
+                .issuanceRatio(DEFAULT_ISSUANCE_RATIO)
+                .faceDecimals(DEFAULT_FACE_DECIMALS)
+                .build();
     }
 
     private SignedVoucher createValidVoucher() {
@@ -253,17 +260,15 @@ class VoucherValidatorTest {
         @DisplayName("should collect multiple validation errors")
         void shouldCollectMultipleValidationErrors() {
             // Given - Create an expired voucher with invalid signature
-            VoucherSecret secret = VoucherSecret.create(
-                    ISSUER_ID,
-                    UNIT,
-                    FACE_VALUE,
-                    Instant.now().minusSeconds(3600).getEpochSecond(),
-                    null,
-                    DEFAULT_STRATEGY,
-                    DEFAULT_ISSUANCE_RATIO,
-                    DEFAULT_FACE_DECIMALS,
-                    null
-            );
+            VoucherSecret secret = VoucherSecret.builder()
+                    .issuerId(ISSUER_ID)
+                    .unit(UNIT)
+                    .faceValue(FACE_VALUE)
+                    .expiresAt(Instant.now().minusSeconds(3600).getEpochSecond())
+                    .backingStrategy(DEFAULT_STRATEGY.name())
+                    .issuanceRatio(DEFAULT_ISSUANCE_RATIO)
+                    .faceDecimals(DEFAULT_FACE_DECIMALS)
+                    .build();
             byte[] badSignature = new byte[64];
             SignedVoucher voucher = new SignedVoucher(secret, badSignature, issuerPublicKeyHex);
 
@@ -462,17 +467,15 @@ class VoucherValidatorTest {
         @DisplayName("should ignore signature when validating expiry only")
         void shouldIgnoreSignatureWhenValidatingExpiryOnly() {
             // Given - Invalid signature but not expired
-            VoucherSecret secret = VoucherSecret.create(
-                    ISSUER_ID,
-                    UNIT,
-                    FACE_VALUE,
-                    Instant.now().plusSeconds(3600).getEpochSecond(),
-                    null,
-                    DEFAULT_STRATEGY,
-                    DEFAULT_ISSUANCE_RATIO,
-                    DEFAULT_FACE_DECIMALS,
-                    null
-            );
+            VoucherSecret secret = VoucherSecret.builder()
+                    .issuerId(ISSUER_ID)
+                    .unit(UNIT)
+                    .faceValue(FACE_VALUE)
+                    .expiresAt(Instant.now().plusSeconds(3600).getEpochSecond())
+                    .backingStrategy(DEFAULT_STRATEGY.name())
+                    .issuanceRatio(DEFAULT_ISSUANCE_RATIO)
+                    .faceDecimals(DEFAULT_FACE_DECIMALS)
+                    .build();
             byte[] badSignature = new byte[64];
             SignedVoucher voucher = new SignedVoucher(secret, badSignature, issuerPublicKeyHex);
 
@@ -579,11 +582,15 @@ class VoucherValidatorTest {
         @DisplayName("should validate voucher with backing strategy and metadata")
         void shouldValidateVoucherWithBackingStrategyAndMetadata() {
             // Given
-            VoucherSecret secret = VoucherSecret.create(
-                    ISSUER_ID, UNIT, FACE_VALUE, null, null,
-                    BackingStrategy.FIXED, 0.02, 2,
-                    java.util.Map.of("event", "Concert", "seat", "A12")
-            );
+            VoucherSecret secret = VoucherSecret.builder()
+                    .issuerId(ISSUER_ID)
+                    .unit(UNIT)
+                    .faceValue(FACE_VALUE)
+                    .backingStrategy(BackingStrategy.FIXED.name())
+                    .issuanceRatio(0.02)
+                    .faceDecimals(2)
+                    .merchantMetadata("{\"event\":\"Concert\",\"seat\":\"A12\"}")
+                    .build();
             SignedVoucher voucher = VoucherSignatureService.createSigned(secret, issuerPrivateKeyHex, issuerPublicKeyHex);
 
             // When

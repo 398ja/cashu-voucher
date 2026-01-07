@@ -6,8 +6,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import xyz.tcheeric.cashu.common.VoucherSecret;
 
 import java.time.Instant;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -51,21 +53,37 @@ class SignedVoucherTest {
      */
     private VoucherSecret createVoucherSecret(String issuerId, String unit, long faceValue,
                                               Long expiresAt, String memo) {
-        return VoucherSecret.create(
-                issuerId, unit, faceValue, expiresAt, memo,
-                DEFAULT_STRATEGY, DEFAULT_ISSUANCE_RATIO, DEFAULT_FACE_DECIMALS, null
-        );
+        return VoucherSecret.builder()
+                .issuerId(issuerId)
+                .unit(unit)
+                .faceValue(faceValue)
+                .expiresAt(expiresAt)
+                .memo(memo)
+                .backingStrategy(DEFAULT_STRATEGY.name())
+                .issuanceRatio(DEFAULT_ISSUANCE_RATIO)
+                .faceDecimals(DEFAULT_FACE_DECIMALS)
+                .build();
     }
 
     /**
      * Helper method to create a VoucherSecret with specified voucher ID.
+     * Converts arbitrary strings to deterministic UUIDs for testing.
      */
     private VoucherSecret createVoucherSecretWithId(String voucherId, String issuerId, String unit,
                                                     long faceValue, Long expiresAt, String memo) {
-        return VoucherSecret.create(
-                voucherId, issuerId, unit, faceValue, expiresAt, memo,
-                DEFAULT_STRATEGY, DEFAULT_ISSUANCE_RATIO, DEFAULT_FACE_DECIMALS, null
-        );
+        // Convert arbitrary string to deterministic UUID for testing
+        UUID id = UUID.nameUUIDFromBytes(voucherId.getBytes());
+        return VoucherSecret.builder()
+                .voucherId(id)
+                .issuerId(issuerId)
+                .unit(unit)
+                .faceValue(faceValue)
+                .expiresAt(expiresAt)
+                .memo(memo)
+                .backingStrategy(DEFAULT_STRATEGY.name())
+                .issuanceRatio(DEFAULT_ISSUANCE_RATIO)
+                .faceDecimals(DEFAULT_FACE_DECIMALS)
+                .build();
     }
 
     private SignedVoucher createValidVoucher() {
@@ -257,18 +275,15 @@ class SignedVoucherTest {
             byte[] signature = VoucherSignatureService.sign(originalSecret, issuerPrivateKeyHex);
 
             // Create a different secret with modified face value
-            VoucherSecret modifiedSecret = VoucherSecret.create(
-                    originalSecret.getVoucherId(), // Same ID
-                    ISSUER_ID,
-                    UNIT,
-                    FACE_VALUE + 1000, // Modified value
-                    null,
-                    null,
-                    DEFAULT_STRATEGY,
-                    DEFAULT_ISSUANCE_RATIO,
-                    DEFAULT_FACE_DECIMALS,
-                    null
-            );
+            VoucherSecret modifiedSecret = VoucherSecret.builder()
+                    .voucherId(originalSecret.getVoucherId()) // Same ID
+                    .issuerId(ISSUER_ID)
+                    .unit(UNIT)
+                    .faceValue(FACE_VALUE + 1000) // Modified value
+                    .backingStrategy(DEFAULT_STRATEGY.name())
+                    .issuanceRatio(DEFAULT_ISSUANCE_RATIO)
+                    .faceDecimals(DEFAULT_FACE_DECIMALS)
+                    .build();
 
             SignedVoucher voucher = new SignedVoucher(modifiedSecret, signature, issuerPublicKeyHex);
 
@@ -283,25 +298,26 @@ class SignedVoucherTest {
         @DisplayName("should verify signature includes backing strategy fields")
         void shouldVerifySignatureIncludesBackingStrategyFields() {
             // Given
-            VoucherSecret originalSecret = VoucherSecret.create(
-                    ISSUER_ID, UNIT, FACE_VALUE, null, null,
-                    BackingStrategy.FIXED, 0.02, 2, null
-            );
+            VoucherSecret originalSecret = VoucherSecret.builder()
+                    .issuerId(ISSUER_ID)
+                    .unit(UNIT)
+                    .faceValue(FACE_VALUE)
+                    .backingStrategy(BackingStrategy.FIXED.name())
+                    .issuanceRatio(0.02)
+                    .faceDecimals(2)
+                    .build();
             byte[] signature = VoucherSignatureService.sign(originalSecret, issuerPrivateKeyHex);
 
             // Create a different secret with modified backing strategy
-            VoucherSecret modifiedSecret = VoucherSecret.create(
-                    originalSecret.getVoucherId(),
-                    ISSUER_ID,
-                    UNIT,
-                    FACE_VALUE,
-                    null,
-                    null,
-                    BackingStrategy.PROPORTIONAL, // Modified strategy
-                    0.02,
-                    2,
-                    null
-            );
+            VoucherSecret modifiedSecret = VoucherSecret.builder()
+                    .voucherId(originalSecret.getVoucherId())
+                    .issuerId(ISSUER_ID)
+                    .unit(UNIT)
+                    .faceValue(FACE_VALUE)
+                    .backingStrategy(BackingStrategy.PROPORTIONAL.name()) // Modified strategy
+                    .issuanceRatio(0.02)
+                    .faceDecimals(2)
+                    .build();
 
             SignedVoucher voucher = new SignedVoucher(modifiedSecret, signature, issuerPublicKeyHex);
 
@@ -524,18 +540,22 @@ class SignedVoucherTest {
 
         /**
          * Tests that vouchers with different signatures are not equal.
+         * Note: Each voucher needs its own VoucherSecret because the constructor
+         * modifies the secret to add signature/public key tags.
          */
         @Test
         @DisplayName("should not be equal when signatures differ")
         void shouldNotBeEqualWhenSignaturesDiffer() {
-            // Given
-            VoucherSecret secret = createVoucherSecretWithId("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
-            byte[] signature1 = VoucherSignatureService.sign(secret, issuerPrivateKeyHex);
+            // Given - create separate secrets for each voucher
+            VoucherSecret secret1 = createVoucherSecretWithId("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret2 = createVoucherSecretWithId("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
+
+            byte[] signature1 = VoucherSignatureService.sign(secret1, issuerPrivateKeyHex);
             byte[] signature2 = signature1.clone();
             signature2[0] = (byte) ~signature2[0]; // Modify one byte
 
-            SignedVoucher voucher1 = new SignedVoucher(secret, signature1, issuerPublicKeyHex);
-            SignedVoucher voucher2 = new SignedVoucher(secret, signature2, issuerPublicKeyHex);
+            SignedVoucher voucher1 = new SignedVoucher(secret1, signature1, issuerPublicKeyHex);
+            SignedVoucher voucher2 = new SignedVoucher(secret2, signature2, issuerPublicKeyHex);
 
             // When / Then
             assertThat(voucher1).isNotEqualTo(voucher2);
@@ -543,17 +563,21 @@ class SignedVoucherTest {
 
         /**
          * Tests that vouchers with different public keys are not equal.
+         * Note: Each voucher needs its own VoucherSecret because the constructor
+         * modifies the secret to add signature/public key tags.
          */
         @Test
         @DisplayName("should not be equal when public keys differ")
         void shouldNotBeEqualWhenPublicKeysDiffer() {
-            // Given
-            VoucherSecret secret = createVoucherSecretWithId("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
-            byte[] signature = VoucherSignatureService.sign(secret, issuerPrivateKeyHex);
+            // Given - create separate secrets for each voucher
+            VoucherSecret secret1 = createVoucherSecretWithId("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
+            VoucherSecret secret2 = createVoucherSecretWithId("test-id", ISSUER_ID, UNIT, FACE_VALUE, null, null);
+
+            byte[] signature = VoucherSignatureService.sign(secret1, issuerPrivateKeyHex);
             String differentPublicKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-            SignedVoucher voucher1 = new SignedVoucher(secret, signature, issuerPublicKeyHex);
-            SignedVoucher voucher2 = new SignedVoucher(secret, signature, differentPublicKey);
+            SignedVoucher voucher1 = new SignedVoucher(secret1, signature.clone(), issuerPublicKeyHex);
+            SignedVoucher voucher2 = new SignedVoucher(secret2, signature.clone(), differentPublicKey);
 
             // When / Then
             assertThat(voucher1).isNotEqualTo(voucher2);
@@ -625,6 +649,7 @@ class SignedVoucherTest {
 
         /**
          * Tests that toStringWithMetadata() includes detailed information.
+         * This method includes additional fields not in the basic toString().
          */
         @Test
         @DisplayName("toStringWithMetadata() should include detailed information")
@@ -637,7 +662,9 @@ class SignedVoucherTest {
 
             // Then
             assertThat(str).contains("SignedVoucher");
-            assertThat(str).contains("secret=");
+            assertThat(str).contains("faceDecimals");  // Only in metadata version
+            assertThat(str).contains("backingStrategy");  // Only in metadata version
+            assertThat(str).contains("issuanceRatio");  // Only in metadata version
             assertThat(str).contains("signatureValid");
             assertThat(str).contains("issuerPublicKey");
         }
