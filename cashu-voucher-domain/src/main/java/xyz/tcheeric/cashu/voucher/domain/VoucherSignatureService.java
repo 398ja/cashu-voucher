@@ -1,14 +1,22 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.NonNull;
 import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import xyz.tcheeric.cashu.common.VoucherSecret;
+import xyz.tcheeric.cashu.common.VoucherTags;
+import xyz.tcheeric.cashu.common.WellKnownSecret;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Service for secp256k1/Schnorr signature generation and verification of voucher secrets.
@@ -22,9 +30,9 @@ import java.security.SecureRandom;
  * </ul>
  *
  * <h3>Cryptographic Details</h3>
- * <p>Uses BIP-340 Schnorr signatures over the canonical CBOR representation of the voucher secret.
- * The canonical bytes are obtained via {@link VoucherSecret#toCanonicalBytes()}, which ensures
- * deterministic serialization.
+ * <p>Uses BIP-340 Schnorr signatures over the NUT-10 serialized representation of the voucher secret.
+ * The canonical bytes for signing are obtained by serializing the VoucherSecret without the
+ * signature tag, then hashing with SHA-256.
  *
  * <h3>Key Format</h3>
  * <p>Keys are expected as hex-encoded strings (matching Nostr format):
@@ -63,6 +71,7 @@ public final class VoucherSignatureService {
     private static final int SCHNORR_SIGNATURE_LENGTH = 64;
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private VoucherSignatureService() {
         throw new UnsupportedOperationException("Utility class cannot be instantiated");
@@ -71,8 +80,9 @@ public final class VoucherSignatureService {
     /**
      * Signs a voucher secret with an issuer's private key using Schnorr signatures.
      *
-     * <p>The signature is generated over the canonical CBOR bytes of the voucher secret
-     * using BIP-340 Schnorr signatures. The resulting signature is 64 bytes.
+     * <p>The signature is generated over the canonical representation of the voucher secret
+     * (NUT-10 format without signature tag) using BIP-340 Schnorr signatures.
+     * The resulting signature is 64 bytes.
      *
      * @param secret the voucher secret to sign (must not be null)
      * @param issuerPrivateKeyHex the issuer's private key as hex string (64 chars, must not be null)
@@ -92,8 +102,8 @@ public final class VoucherSignatureService {
                                 " bytes, got " + privateKeyBytes.length);
             }
 
-            // Hash the canonical CBOR bytes to get a 32-byte message for BIP-340
-            byte[] canonicalBytes = secret.toCanonicalBytes();
+            // Get canonical bytes for signing (NUT-10 format without signature)
+            byte[] canonicalBytes = getCanonicalBytesForSigning(secret);
             byte[] messageHash = sha256(canonicalBytes);
 
             // Generate 32 bytes of auxiliary randomness for BIP-340 signing
@@ -115,6 +125,31 @@ public final class VoucherSignatureService {
             throw e;
         } catch (Exception e) {
             throw new IllegalArgumentException("Failed to sign voucher: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Verifies a voucher secret's signature using the signature and public key from its tags.
+     *
+     * @param secret the voucher secret with signature and public key tags set
+     * @return true if the signature is valid, false otherwise
+     */
+    public static boolean verify(@NonNull VoucherSecret secret) {
+        String signatureHex = secret.getIssuerSignature();
+        String publicKeyHex = secret.getIssuerPublicKey();
+
+        if (signatureHex == null || publicKeyHex == null) {
+            logger.warn("Cannot verify unsigned voucher {}", secret.getVoucherId());
+            return false;
+        }
+
+        try {
+            byte[] signature = Hex.decode(signatureHex);
+            return verify(secret, signature, publicKeyHex);
+        } catch (Exception e) {
+            logger.warn("Signature verification failed for voucher {}: {}",
+                    secret.getVoucherId(), e.getMessage());
+            return false;
         }
     }
 
@@ -149,8 +184,8 @@ public final class VoucherSignatureService {
                 return false;
             }
 
-            // Hash the canonical CBOR bytes to get a 32-byte message for BIP-340
-            byte[] canonicalBytes = secret.toCanonicalBytes();
+            // Get canonical bytes for verification (NUT-10 format without signature)
+            byte[] canonicalBytes = getCanonicalBytesForSigning(secret);
             byte[] messageHash = sha256(canonicalBytes);
 
             boolean valid = Schnorr.verify(messageHash, publicKeyBytes, signature);
@@ -172,12 +207,13 @@ public final class VoucherSignatureService {
     }
 
     /**
-     * Creates a signed voucher by signing the secret and wrapping it.
+     * Creates a signed voucher by signing the secret and setting the signature/pubkey tags.
      *
-     * <p>This is a convenience method that combines signing and voucher creation:
+     * <p>This is a convenience method that:
      * <ol>
      *   <li>Signs the voucher secret with the private key using Schnorr</li>
-     *   <li>Creates a {@link SignedVoucher} with the signature and public key</li>
+     *   <li>Sets the signature and public key tags on the secret</li>
+     *   <li>Creates a {@link SignedVoucher} wrapping the secret</li>
      * </ol>
      *
      * @param secret the voucher secret to sign (must not be null)
@@ -192,7 +228,104 @@ public final class VoucherSignatureService {
             @NonNull String issuerPublicKeyHex
     ) {
         byte[] signature = sign(secret, issuerPrivateKeyHex);
-        return new SignedVoucher(secret, signature, issuerPublicKeyHex);
+        secret.setIssuerSignature(Hex.toHexString(signature));
+        secret.setIssuerPublicKey(issuerPublicKeyHex);
+        return new SignedVoucher(secret);
+    }
+
+    /**
+     * Gets the canonical bytes for signing (excludes signature-related tags).
+     *
+     * <p>The canonical representation is the NUT-10 JSON serialization of the
+     * VoucherSecret with all tags except {@code issuer_sig} and {@code issuer_pubkey}.
+     * These tags are added after signing, so they must be excluded to ensure
+     * deterministic signing and verification.
+     *
+     * <p>Format matches WellKnownSecretSerializer: ["KIND", "data_hex", "nonce", [[tags]]]
+     * where numbers are serialized as numbers, not quoted strings.
+     *
+     * @param secret the voucher secret
+     * @return canonical bytes for signing
+     */
+    private static byte[] getCanonicalBytesForSigning(VoucherSecret secret) {
+        try {
+            // Build canonical JSON array manually to match WellKnownSecretSerializer format
+            // but exclude the issuer_sig tag
+            StringBuilder sb = new StringBuilder();
+            sb.append("[\"").append(WellKnownSecret.Kind.VOUCHER.name()).append("\",\"");
+            sb.append(Hex.toHexString(secret.getData()));
+            sb.append("\",\"");
+            sb.append(secret.getNonce() != null ? secret.getNonce() : "");
+            sb.append("\",[");
+
+            boolean first = true;
+            for (var tag : secret.getTags()) {
+                // Skip signature and public key tags for signing
+                // These are added after signing, so they must be excluded from canonical bytes
+                if (VoucherTags.ISSUER_SIG.equals(tag.getKey()) ||
+                    VoucherTags.ISSUER_PUBKEY.equals(tag.getKey())) {
+                    continue;
+                }
+                if (!first) {
+                    sb.append(",");
+                }
+                first = false;
+
+                // Serialize tag as array: ["key", value1, value2, ...]
+                sb.append("[\"").append(escapeJson(tag.getKey())).append("\"");
+                for (var value : tag.getValues()) {
+                    sb.append(",");
+                    if (value instanceof Number) {
+                        // Numbers written without quotes (matching WellKnownSecretSerializer)
+                        sb.append(((Number) value).longValue());
+                    } else {
+                        // Strings written with quotes and proper escaping
+                        sb.append("\"").append(escapeJson(String.valueOf(value))).append("\"");
+                    }
+                }
+                sb.append("]");
+            }
+            sb.append("]]");
+
+            return sb.toString().getBytes(StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to serialize voucher for signing", e);
+        }
+    }
+
+    /**
+     * Escapes special JSON characters in a string per RFC 8259.
+     *
+     * <p>All control characters (U+0000 through U+001F) must be escaped.
+     * Common ones use shorthand notation, others use backslash-u hex notation.
+     *
+     * @param input the string to escape
+     * @return the escaped string
+     */
+    private static String escapeJson(String input) {
+        if (input == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (char c : input.toCharArray()) {
+            switch (c) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\b': sb.append("\\b"); break;
+                case '\f': sb.append("\\f"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default:
+                    // Escape all other control characters (U+0000-U+001F) per RFC 8259
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        return sb.toString();
     }
 
     /**

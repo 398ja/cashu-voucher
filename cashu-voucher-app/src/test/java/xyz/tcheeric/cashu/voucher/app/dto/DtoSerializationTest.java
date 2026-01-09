@@ -7,9 +7,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import xyz.tcheeric.cashu.common.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
-import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 
@@ -117,7 +117,15 @@ class DtoSerializationTest {
             // is tested at integration level. Here we verify the DTO structure.
 
             // Given - test that the DTO structure is correct
-            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 10000L, null, "Test memo", BackingStrategy.FIXED, 1.0, 0, null);
+            VoucherSecret secret = VoucherSecret.builder()
+                    .issuerId("merchant123")
+                    .unit("sat")
+                    .faceValue(10000L)
+                    .memo("Test memo")
+                    .backingStrategy(BackingStrategy.FIXED.name())
+                    .issuanceRatio(1.0)
+                    .faceDecimals(0)
+                    .build();
             SignedVoucher voucher = new SignedVoucher(
                     secret,
                     new byte[64],
@@ -132,7 +140,7 @@ class DtoSerializationTest {
             // Then - verify the DTO has correct accessors
             assertThat(response.getToken()).isEqualTo("cashuAtest123");
             assertThat(response.getVoucher()).isEqualTo(voucher);
-            assertThat(response.getVoucherId()).isEqualTo(secret.getVoucherId());
+            assertThat(response.getVoucherId()).isEqualTo(secret.getVoucherId().toString());
             assertThat(response.getAmount()).isEqualTo(10000L);
             assertThat(response.getUnit()).isEqualTo("sat");
         }
@@ -206,7 +214,14 @@ class DtoSerializationTest {
         @DisplayName("should create success response with voucher")
         void shouldCreateSuccessResponse() throws Exception {
             // Given
-            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 10000L, null, null, BackingStrategy.FIXED, 1.0, 0, null);
+            VoucherSecret secret = VoucherSecret.builder()
+                    .issuerId("merchant123")
+                    .unit("sat")
+                    .faceValue(10000L)
+                    .backingStrategy(BackingStrategy.FIXED.name())
+                    .issuanceRatio(1.0)
+                    .faceDecimals(0)
+                    .build();
             SignedVoucher voucher = new SignedVoucher(secret, new byte[64], "a".repeat(64));
 
             // When
@@ -239,7 +254,14 @@ class DtoSerializationTest {
         @DisplayName("should have correct convenience accessors")
         void shouldHaveConvenienceAccessors() throws Exception {
             // Given
-            VoucherSecret secret = VoucherSecret.create("merchant123", "usd", 100L, null, null, BackingStrategy.FIXED, 1.0, 0, null);
+            VoucherSecret secret = VoucherSecret.builder()
+                    .issuerId("merchant123")
+                    .unit("usd")
+                    .faceValue(100L)
+                    .backingStrategy(BackingStrategy.FIXED.name())
+                    .issuanceRatio(1.0)
+                    .faceDecimals(0)
+                    .build();
             SignedVoucher voucher = new SignedVoucher(secret, new byte[64], "a".repeat(64));
 
             // When
@@ -259,7 +281,15 @@ class DtoSerializationTest {
         @DisplayName("should create from SignedVoucher with correct fields")
         void shouldCreateFromSignedVoucher() throws Exception {
             // Given
-            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 10000L, null, "Test", BackingStrategy.FIXED, 1.0, 0, null);
+            VoucherSecret secret = VoucherSecret.builder()
+                    .issuerId("merchant123")
+                    .unit("sat")
+                    .faceValue(10000L)
+                    .memo("Test")
+                    .backingStrategy(BackingStrategy.FIXED.name())
+                    .issuanceRatio(1.0)
+                    .faceDecimals(0)
+                    .build();
             SignedVoucher signedVoucher = new SignedVoucher(secret, new byte[64], "a".repeat(64));
 
             // When
@@ -270,7 +300,7 @@ class DtoSerializationTest {
 
             // Then - verify DTO structure and methods
             assertThat(stored).isNotNull();
-            assertThat(stored.getVoucherId()).isEqualTo(secret.getVoucherId());
+            assertThat(stored.getVoucherId()).isEqualTo(secret.getVoucherId().toString());
             assertThat(stored.getUserLabel()).isEqualTo("My Gift Card");
             assertThat(stored.getAddedAt()).isNotNull();
             assertThat(stored.getLastBackupAt()).isNotNull();
@@ -282,7 +312,14 @@ class DtoSerializationTest {
         @DisplayName("should have working helper methods")
         void shouldHaveWorkingHelperMethods() throws Exception {
             // Given
-            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 10000L, null, null, BackingStrategy.FIXED, 1.0, 0, null);
+            VoucherSecret secret = VoucherSecret.builder()
+                    .issuerId("merchant123")
+                    .unit("sat")
+                    .faceValue(10000L)
+                    .backingStrategy(BackingStrategy.FIXED.name())
+                    .issuanceRatio(1.0)
+                    .faceDecimals(0)
+                    .build();
             SignedVoucher signedVoucher = new SignedVoucher(secret, new byte[64], "a".repeat(64));
 
             // When
@@ -301,7 +338,14 @@ class DtoSerializationTest {
         @DisplayName("should handle nullable fields correctly")
         void shouldHandleNullableFields() throws Exception {
             // Given
-            VoucherSecret secret = VoucherSecret.create("merchant123", "sat", 5000L, null, null, BackingStrategy.FIXED, 1.0, 0, null);
+            VoucherSecret secret = VoucherSecret.builder()
+                    .issuerId("merchant123")
+                    .unit("sat")
+                    .faceValue(5000L)
+                    .backingStrategy(BackingStrategy.FIXED.name())
+                    .issuanceRatio(1.0)
+                    .faceDecimals(0)
+                    .build();
             SignedVoucher signedVoucher = new SignedVoucher(secret, new byte[64], "a".repeat(64));
 
             // When

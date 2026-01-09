@@ -13,9 +13,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherRequest;
 import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherResponse;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherLedgerPort;
+import xyz.tcheeric.cashu.common.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
-import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 
@@ -62,17 +62,14 @@ class MerchantVerificationServiceTest {
      * Helper method to create a valid signed voucher.
      */
     private SignedVoucher createValidVoucher(String issuerId) {
-        VoucherSecret secret = VoucherSecret.create(
-                issuerId,
-                UNIT,
-                AMOUNT,
-                null, // No expiry
-                null, // No memo
-                BackingStrategy.FIXED,
-                1.0,
-                0,
-                null
-        );
+        VoucherSecret secret = VoucherSecret.builder()
+                .issuerId(issuerId)
+                .unit(UNIT)
+                .faceValue(AMOUNT)
+                .backingStrategy(BackingStrategy.FIXED.name())
+                .issuanceRatio(1.0)
+                .faceDecimals(0)
+                .build();
         return VoucherSignatureService.createSigned(secret, ISSUER_PRIVKEY, ISSUER_PUBKEY);
     }
 
@@ -81,17 +78,15 @@ class MerchantVerificationServiceTest {
      */
     private SignedVoucher createExpiredVoucher(String issuerId) {
         long pastExpiry = (System.currentTimeMillis() / 1000) - 86400; // 1 day ago
-        VoucherSecret secret = VoucherSecret.create(
-                issuerId,
-                UNIT,
-                AMOUNT,
-                pastExpiry,
-                null,
-                BackingStrategy.FIXED,
-                1.0,
-                0,
-                null
-        );
+        VoucherSecret secret = VoucherSecret.builder()
+                .issuerId(issuerId)
+                .unit(UNIT)
+                .faceValue(AMOUNT)
+                .expiresAt(pastExpiry)
+                .backingStrategy(BackingStrategy.FIXED.name())
+                .issuanceRatio(1.0)
+                .faceDecimals(0)
+                .build();
         return VoucherSignatureService.createSigned(secret, ISSUER_PRIVKEY, ISSUER_PUBKEY);
     }
 
@@ -99,24 +94,30 @@ class MerchantVerificationServiceTest {
      * Helper method to create a voucher with invalid signature.
      */
     private SignedVoucher createInvalidSignatureVoucher(String issuerId) {
-        VoucherSecret secret = VoucherSecret.create(
-                issuerId,
-                UNIT,
-                AMOUNT,
-                null,
-                null,
-                BackingStrategy.FIXED,
-                1.0,
-                0,
-                null
-        );
+        VoucherSecret secret = VoucherSecret.builder()
+                .issuerId(issuerId)
+                .unit(UNIT)
+                .faceValue(AMOUNT)
+                .backingStrategy(BackingStrategy.FIXED.name())
+                .issuanceRatio(1.0)
+                .faceDecimals(0)
+                .build();
         SignedVoucher valid = VoucherSignatureService.createSigned(secret, ISSUER_PRIVKEY, ISSUER_PUBKEY);
 
-        // Corrupt the signature
+        // Corrupt the signature - need new secret since signature modifies it
+        VoucherSecret secret2 = VoucherSecret.builder()
+                .voucherId(secret.getVoucherId())
+                .issuerId(issuerId)
+                .unit(UNIT)
+                .faceValue(AMOUNT)
+                .backingStrategy(BackingStrategy.FIXED.name())
+                .issuanceRatio(1.0)
+                .faceDecimals(0)
+                .build();
         byte[] corruptedSignature = valid.getIssuerSignature().clone();
         corruptedSignature[0] ^= 0xFF;
 
-        return new SignedVoucher(secret, corruptedSignature, valid.getIssuerPublicKey());
+        return new SignedVoucher(secret2, corruptedSignature, valid.getIssuerPublicKey());
     }
 
     @Nested
@@ -245,7 +246,7 @@ class MerchantVerificationServiceTest {
         void shouldVerifyValidVoucherWithIssuedStatus() {
             // Given
             SignedVoucher voucher = createValidVoucher(ISSUER_ID);
-            String voucherId = voucher.getSecret().getVoucherId();
+            String voucherId = voucher.getSecret().getVoucherId().toString();
             when(ledgerPort.queryStatus(voucherId)).thenReturn(Optional.of(VoucherStatus.ISSUED));
 
             // When
@@ -280,7 +281,7 @@ class MerchantVerificationServiceTest {
         void shouldRejectVoucherNotFoundInLedger() {
             // Given
             SignedVoucher voucher = createValidVoucher(ISSUER_ID);
-            String voucherId = voucher.getSecret().getVoucherId();
+            String voucherId = voucher.getSecret().getVoucherId().toString();
             when(ledgerPort.queryStatus(voucherId)).thenReturn(Optional.empty());
 
             // When
@@ -298,7 +299,7 @@ class MerchantVerificationServiceTest {
         void shouldDetectDoubleSpend() {
             // Given
             SignedVoucher voucher = createValidVoucher(ISSUER_ID);
-            String voucherId = voucher.getSecret().getVoucherId();
+            String voucherId = voucher.getSecret().getVoucherId().toString();
             when(ledgerPort.queryStatus(voucherId)).thenReturn(Optional.of(VoucherStatus.REDEEMED));
 
             // When
@@ -318,7 +319,7 @@ class MerchantVerificationServiceTest {
         void shouldRejectRevokedVoucher() {
             // Given
             SignedVoucher voucher = createValidVoucher(ISSUER_ID);
-            String voucherId = voucher.getSecret().getVoucherId();
+            String voucherId = voucher.getSecret().getVoucherId().toString();
             when(ledgerPort.queryStatus(voucherId)).thenReturn(Optional.of(VoucherStatus.REVOKED));
 
             // When
@@ -336,7 +337,7 @@ class MerchantVerificationServiceTest {
         void shouldRejectExpiredVoucherFromLedger() {
             // Given
             SignedVoucher voucher = createValidVoucher(ISSUER_ID);
-            String voucherId = voucher.getSecret().getVoucherId();
+            String voucherId = voucher.getSecret().getVoucherId().toString();
             when(ledgerPort.queryStatus(voucherId)).thenReturn(Optional.of(VoucherStatus.EXPIRED));
 
             // When
@@ -354,7 +355,7 @@ class MerchantVerificationServiceTest {
         void shouldHandleLedgerQueryException() {
             // Given
             SignedVoucher voucher = createValidVoucher(ISSUER_ID);
-            String voucherId = voucher.getSecret().getVoucherId();
+            String voucherId = voucher.getSecret().getVoucherId().toString();
             when(ledgerPort.queryStatus(voucherId))
                     .thenThrow(new RuntimeException("Network timeout"));
 
@@ -435,7 +436,7 @@ class MerchantVerificationServiceTest {
         void shouldRedeemVoucherWithOnlineVerification() {
             // Given
             SignedVoucher voucher = createValidVoucher(ISSUER_ID);
-            String voucherId = voucher.getSecret().getVoucherId();
+            String voucherId = voucher.getSecret().getVoucherId().toString();
 
             RedeemVoucherRequest request = RedeemVoucherRequest.builder()
                     .token("cashuA" + voucherId)
@@ -463,7 +464,7 @@ class MerchantVerificationServiceTest {
         void shouldRedeemVoucherWithOfflineVerification() {
             // Given
             SignedVoucher voucher = createValidVoucher(ISSUER_ID);
-            String voucherId = voucher.getSecret().getVoucherId();
+            String voucherId = voucher.getSecret().getVoucherId().toString();
 
             RedeemVoucherRequest request = RedeemVoucherRequest.builder()
                     .token("cashuA" + voucherId)
@@ -511,7 +512,7 @@ class MerchantVerificationServiceTest {
         void shouldFailIfMarkingFails() {
             // Given
             SignedVoucher voucher = createValidVoucher(ISSUER_ID);
-            String voucherId = voucher.getSecret().getVoucherId();
+            String voucherId = voucher.getSecret().getVoucherId().toString();
 
             RedeemVoucherRequest request = RedeemVoucherRequest.builder()
                     .token("cashuA" + voucherId)
@@ -708,7 +709,7 @@ class MerchantVerificationServiceTest {
         void e2eTest_CompleteOnlineVerificationWorkflow() {
             // ========== STEP 1: Customer presents voucher ==========
             SignedVoucher customerVoucher = createValidVoucher(ISSUER_ID);
-            String voucherId = customerVoucher.getSecret().getVoucherId();
+            String voucherId = customerVoucher.getSecret().getVoucherId().toString();
 
             // ========== STEP 2: Mock Nostr ledger response ==========
             // Simulate Nostr ledger confirming voucher is ISSUED
@@ -754,7 +755,7 @@ class MerchantVerificationServiceTest {
         void e2eTest_MerchantRejectsDoubleSpend() {
             // ========== STEP 1: Customer attempts to use already-redeemed voucher ==========
             SignedVoucher alreadyRedeemedVoucher = createValidVoucher(ISSUER_ID);
-            String voucherId = alreadyRedeemedVoucher.getSecret().getVoucherId();
+            String voucherId = alreadyRedeemedVoucher.getSecret().getVoucherId().toString();
 
             // ========== STEP 2: Nostr ledger shows voucher was already redeemed ==========
             when(ledgerPort.queryStatus(voucherId))
@@ -878,7 +879,7 @@ class MerchantVerificationServiceTest {
         void e2eTest_CompleteVerificationAndRedemption() {
             // ========== STEP 1: Customer presents valid voucher ==========
             SignedVoucher voucher = createValidVoucher(ISSUER_ID);
-            String voucherId = voucher.getSecret().getVoucherId();
+            String voucherId = voucher.getSecret().getVoucherId().toString();
 
             // ========== STEP 2: Merchant verifies online ==========
             when(ledgerPort.queryStatus(voucherId))

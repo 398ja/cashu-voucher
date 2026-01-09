@@ -6,14 +6,18 @@ import xyz.tcheeric.cashu.voucher.app.dto.IssueVoucherRequest;
 import xyz.tcheeric.cashu.voucher.app.dto.IssueVoucherResponse;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherBackupPort;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherLedgerPort;
+import xyz.tcheeric.cashu.common.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
-import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -74,6 +78,8 @@ import java.util.Optional;
  */
 @Slf4j
 public class VoucherService {
+
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final VoucherLedgerPort ledgerPort;
     private final VoucherBackupPort backupPort;
@@ -146,33 +152,30 @@ public class VoucherService {
         }
 
         // Create voucher secret (with optional custom ID for testing)
-        VoucherSecret secret;
+        VoucherSecret.Builder secretBuilder = VoucherSecret.builder()
+                .issuerId(request.getIssuerId())
+                .unit(request.getUnit())
+                .faceValue(request.getAmount())
+                .expiresAt(expiresAt)
+                .memo(request.getMemo())
+                .backingStrategy(request.getBackingStrategy() != null ? request.getBackingStrategy().name() : null)
+                .issuanceRatio(request.getIssuanceRatio())
+                .faceDecimals(request.getFaceDecimals())
+                .merchantMetadata(serializeMerchantMetadata(request.getMerchantMetadata()));
+
         if (request.getVoucherId() != null && !request.getVoucherId().isBlank()) {
-            secret = VoucherSecret.create(
-                    request.getVoucherId(),
-                    request.getIssuerId(),
-                    request.getUnit(),
-                    request.getAmount(),
-                    expiresAt,
-                    request.getMemo(),
-                    request.getBackingStrategy(),
-                    request.getIssuanceRatio(),
-                    request.getFaceDecimals(),
-                    request.getMerchantMetadata()
-            );
-            log.debug("Created voucher with custom ID: {}", request.getVoucherId());
-        } else {
-            secret = VoucherSecret.create(
-                    request.getIssuerId(),
-                    request.getUnit(),
-                    request.getAmount(),
-                    expiresAt,
-                    request.getMemo(),
-                    request.getBackingStrategy(),
-                    request.getIssuanceRatio(),
-                    request.getFaceDecimals(),
-                    request.getMerchantMetadata()
-            );
+            try {
+                secretBuilder.voucherId(java.util.UUID.fromString(request.getVoucherId()));
+                log.debug("Created voucher with custom ID: {}", request.getVoucherId());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                        "Invalid voucher ID format: must be a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)", e);
+            }
+        }
+
+        VoucherSecret secret = secretBuilder.build();
+
+        if (request.getVoucherId() == null || request.getVoucherId().isBlank()) {
             log.debug("Created voucher with auto-generated ID: {}", secret.getVoucherId());
         }
 
@@ -379,6 +382,25 @@ public class VoucherService {
         // TODO: Implement full Cashu token v4 serialization
         // For now, return a placeholder that includes the voucher ID
         log.warn("Using placeholder token serialization - full implementation pending");
-        return "cashuA" + voucher.getSecret().getVoucherId().replace("-", "");
+        return "cashuA" + voucher.getSecret().getVoucherId().toString().replace("-", "");
+    }
+
+    /**
+     * Serializes merchant metadata map to JSON string.
+     *
+     * @param metadata the metadata map, may be null
+     * @return JSON string representation, or null if input is null/empty
+     * @throws IllegalArgumentException if metadata cannot be serialized to JSON
+     */
+    private String serializeMerchantMetadata(Map<String, Object> metadata) {
+        if (metadata == null || metadata.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(metadata);
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize merchant metadata: {}", e.getMessage());
+            throw new IllegalArgumentException("Merchant metadata cannot be serialized to JSON", e);
+        }
     }
 }

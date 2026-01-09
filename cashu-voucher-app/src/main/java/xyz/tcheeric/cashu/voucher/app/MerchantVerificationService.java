@@ -205,7 +205,8 @@ public class MerchantVerificationService {
             throw new IllegalArgumentException("Expected issuer ID cannot be blank");
         }
 
-        String voucherId = voucher.getSecret().getVoucherId();
+        String voucherId = voucher.getSecret().getVoucherId() != null
+                ? voucher.getSecret().getVoucherId().toString() : null;
         log.info("Performing online verification: voucherId={}, expectedIssuer={}",
                 voucherId, expectedIssuerId);
 
@@ -310,7 +311,8 @@ public class MerchantVerificationService {
             @NonNull RedeemVoucherRequest request,
             @NonNull SignedVoucher voucher
     ) {
-        String voucherId = voucher.getSecret().getVoucherId();
+        String voucherId = voucher.getSecret().getVoucherId() != null
+                ? voucher.getSecret().getVoucherId().toString() : null;
         log.info("Processing redemption request: voucherId={}, merchantId={}",
                 voucherId, request.getMerchantId());
 

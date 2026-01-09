@@ -63,7 +63,8 @@ public class RedeemVoucherResponse {
      * The voucher ID (convenience accessor).
      */
     public String getVoucherId() {
-        return voucher != null ? voucher.getSecret().getVoucherId() : null;
+        return voucher != null && voucher.getSecret().getVoucherId() != null
+                ? voucher.getSecret().getVoucherId().toString() : null;
     }
 
     /**
