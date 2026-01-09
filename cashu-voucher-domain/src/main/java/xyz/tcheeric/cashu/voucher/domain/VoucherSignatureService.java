@@ -294,7 +294,10 @@ public final class VoucherSignatureService {
     }
 
     /**
-     * Escapes special JSON characters in a string.
+     * Escapes special JSON characters in a string per RFC 8259.
+     *
+     * <p>All control characters (U+0000 through U+001F) must be escaped.
+     * Common ones use shorthand notation, others use backslash-u hex notation.
      *
      * @param input the string to escape
      * @return the escaped string
@@ -313,7 +316,13 @@ public final class VoucherSignatureService {
                 case '\n': sb.append("\\n"); break;
                 case '\r': sb.append("\\r"); break;
                 case '\t': sb.append("\\t"); break;
-                default: sb.append(c);
+                default:
+                    // Escape all other control characters (U+0000-U+001F) per RFC 8259
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
             }
         }
         return sb.toString();

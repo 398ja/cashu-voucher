@@ -164,8 +164,13 @@ public class VoucherService {
                 .merchantMetadata(serializeMerchantMetadata(request.getMerchantMetadata()));
 
         if (request.getVoucherId() != null && !request.getVoucherId().isBlank()) {
-            secretBuilder.voucherId(java.util.UUID.fromString(request.getVoucherId()));
-            log.debug("Created voucher with custom ID: {}", request.getVoucherId());
+            try {
+                secretBuilder.voucherId(java.util.UUID.fromString(request.getVoucherId()));
+                log.debug("Created voucher with custom ID: {}", request.getVoucherId());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                        "Invalid voucher ID format: must be a valid UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)", e);
+            }
         }
 
         VoucherSecret secret = secretBuilder.build();
@@ -385,6 +390,7 @@ public class VoucherService {
      *
      * @param metadata the metadata map, may be null
      * @return JSON string representation, or null if input is null/empty
+     * @throws IllegalArgumentException if metadata cannot be serialized to JSON
      */
     private String serializeMerchantMetadata(Map<String, Object> metadata) {
         if (metadata == null || metadata.isEmpty()) {
@@ -393,8 +399,8 @@ public class VoucherService {
         try {
             return objectMapper.writeValueAsString(metadata);
         } catch (JsonProcessingException e) {
-            log.warn("Failed to serialize merchant metadata, ignoring: {}", e.getMessage());
-            return null;
+            log.error("Failed to serialize merchant metadata: {}", e.getMessage());
+            throw new IllegalArgumentException("Merchant metadata cannot be serialized to JSON", e);
         }
     }
 }

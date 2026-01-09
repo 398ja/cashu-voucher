@@ -31,6 +31,10 @@ final class VoucherEventPayloadMapper {
 
     /**
      * Deserializes merchant metadata JSON string to Map.
+     *
+     * @param json the JSON string, may be null or blank
+     * @return the deserialized map, or null if input is null/blank
+     * @throws IllegalArgumentException if JSON parsing fails
      */
     private static Map<String, Object> deserializeMerchantMetadata(String json) {
         if (json == null || json.isBlank()) {
@@ -39,13 +43,17 @@ final class VoucherEventPayloadMapper {
         try {
             return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
         } catch (JsonProcessingException e) {
-            log.warn("Failed to deserialize merchant metadata: {}", e.getMessage());
-            return null;
+            log.error("Failed to deserialize merchant metadata: {}", e.getMessage());
+            throw new IllegalArgumentException("Invalid merchant metadata JSON format", e);
         }
     }
 
     /**
      * Serializes merchant metadata Map to JSON string.
+     *
+     * @param metadata the metadata map, may be null or empty
+     * @return JSON string, or null if input is null/empty
+     * @throws IllegalArgumentException if serialization fails
      */
     private static String serializeMerchantMetadata(Map<String, Object> metadata) {
         if (metadata == null || metadata.isEmpty()) {
@@ -54,8 +62,8 @@ final class VoucherEventPayloadMapper {
         try {
             return objectMapper.writeValueAsString(metadata);
         } catch (JsonProcessingException e) {
-            log.warn("Failed to serialize merchant metadata: {}", e.getMessage());
-            return null;
+            log.error("Failed to serialize merchant metadata: {}", e.getMessage());
+            throw new IllegalArgumentException("Merchant metadata cannot be serialized to JSON", e);
         }
     }
 
@@ -67,7 +75,10 @@ final class VoucherEventPayloadMapper {
         payload.setVoucherId(secret.getVoucherId() != null ? secret.getVoucherId().toString() : null);
         payload.setIssuerId(secret.getIssuerId());
         payload.setUnit(secret.getUnit());
-        payload.setFaceValue(secret.getFaceValue() != null ? secret.getFaceValue() : 0L);
+        if (secret.getFaceValue() == null || secret.getFaceValue() <= 0) {
+            throw new IllegalArgumentException("faceValue is required and must be positive");
+        }
+        payload.setFaceValue(secret.getFaceValue());
         payload.setExpiresAt(secret.getExpiresAt());
         payload.setMemo(secret.getMemo());
         payload.setBackingStrategy(secret.getBackingStrategy());
@@ -81,6 +92,10 @@ final class VoucherEventPayloadMapper {
 
     static SignedVoucher toDomain(VoucherPayload payload) {
         Objects.requireNonNull(payload, "payload");
+
+        if (payload.getFaceValue() <= 0) {
+            throw new IllegalArgumentException("faceValue is required and must be positive");
+        }
 
         String backingStrategy = payload.getBackingStrategy() != null
                 ? payload.getBackingStrategy()
