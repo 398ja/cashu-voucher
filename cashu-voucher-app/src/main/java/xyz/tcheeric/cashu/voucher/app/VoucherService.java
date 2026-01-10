@@ -432,6 +432,7 @@ public class VoucherService {
                 .description(dto.getDescription())
                 .singleUse(dto.getSingleUse())
                 .offlineVerification(dto.getOfflineVerification())
+                .expiresAt(dto.getExpiresAt())
                 .mints(dto.getMints() != null ? new ArrayList<>(dto.getMints()) : new ArrayList<>())
                 .transports(transports)
                 .build();

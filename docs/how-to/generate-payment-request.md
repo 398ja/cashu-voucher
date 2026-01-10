@@ -46,6 +46,22 @@ GeneratePaymentRequestDTO request = GeneratePaymentRequestDTO.builder()
     .build();
 ```
 
+## With Expiry Time
+
+Set an expiration time for the payment request:
+
+```java
+long expiresAt = Instant.now().plus(30, ChronoUnit.MINUTES).getEpochSecond();
+
+GeneratePaymentRequestDTO request = GeneratePaymentRequestDTO.builder()
+    .issuerId("my-merchant-id")
+    .amount(5000)
+    .unit("sat")
+    .expiresAt(expiresAt)            // Request expires in 30 minutes
+    .description("Limited-time offer")
+    .build();
+```
+
 ## With HTTP Callback
 
 Add an HTTP POST callback for server-to-server payment notification:
