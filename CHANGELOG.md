@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **NUT-18V VoucherPaymentRequest support** (Phase 2 integration)
+  - `GeneratePaymentRequestDTO` - Request DTO for generating payment requests with issuer ID, amount, transports, etc.
+  - `GeneratePaymentRequestResponse` - Response DTO with encoded `vreqA...` string and parsed request object
+  - `VoucherService.generatePaymentRequest()` - Generate NUT-18V payment requests with merchant, HTTP POST, and Nostr transports
+  - `MerchantVerificationService.validatePaymentPayload()` - Validate incoming payment payloads against original requests
+  - `MerchantVerificationService.processPaymentPayload()` - Full payment processing with validation and logging
+  - `NUT18VIntegrationTest` - 23 comprehensive integration tests
+
+### Changed
+
+- Updated cashu-lib dependency from 0.10.0 to 0.11.0 (adds VoucherPaymentRequest, VoucherPaymentPayload, VoucherTransport classes)
+
 ---
 
 ## [0.4.0] - 2026-01-07
