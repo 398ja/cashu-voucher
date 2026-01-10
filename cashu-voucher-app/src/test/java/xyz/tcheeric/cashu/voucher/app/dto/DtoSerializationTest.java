@@ -111,8 +111,8 @@ class DtoSerializationTest {
     class IssueVoucherResponseTests {
 
         @Test
-        @DisplayName("should have token field serializable")
-        void shouldHaveTokenFieldSerializable() throws Exception {
+        @DisplayName("should have voucher and convenience accessors")
+        void shouldHaveVoucherAndConvenienceAccessors() throws Exception {
             // Note: Full serialization of IssueVoucherResponse with SignedVoucher
             // is tested at integration level. Here we verify the DTO structure.
 
@@ -132,13 +132,14 @@ class DtoSerializationTest {
                     "a".repeat(64)
             );
 
+            // When - build response without token (normal usage)
             IssueVoucherResponse response = IssueVoucherResponse.builder()
                     .voucher(voucher)
-                    .token("cashuAtest123")
                     .build();
 
             // Then - verify the DTO has correct accessors
-            assertThat(response.getToken()).isEqualTo("cashuAtest123");
+            // Token is deprecated and null in normal usage (requires wallet/mint for creation)
+            assertThat(response.getToken()).isNull();
             assertThat(response.getVoucher()).isEqualTo(voucher);
             assertThat(response.getVoucherId()).isEqualTo(secret.getVoucherId().toString());
             assertThat(response.getAmount()).isEqualTo(10000L);

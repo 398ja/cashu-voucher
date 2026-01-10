@@ -68,13 +68,17 @@ import java.util.UUID;
  *     .build();
  *
  * IssueVoucherResponse response = service.issue(request);
- * System.out.println("Token: " + response.getToken());
+ * SignedVoucher voucher = response.getVoucher();
+ * System.out.println("Voucher ID: " + response.getVoucherId());
+ *
+ * // To create a shareable token, use a wallet (e.g., cashu-client)
+ * // that can swap proofs at the mint with the voucher as the secret.
  *
  * // Query status
  * Optional&lt;VoucherStatus&gt; status = service.queryStatus(response.getVoucherId());
  *
  * // Backup vouchers
- * service.backup(List.of(response.getVoucher()), userNostrPrivateKey);
+ * service.backup(List.of(voucher), userNostrPrivateKey);
  * </pre>
  *
  * @see VoucherLedgerPort
@@ -202,12 +206,12 @@ public class VoucherService {
             throw new RuntimeException("Failed to publish voucher to ledger", e);
         }
 
-        // Serialize to token
-        String token = serializeToToken(signedVoucher);
+        // Note: Token serialization requires mint interaction (blind signatures, keyset).
+        // Use cashu-client's VoucherService.issueAndBackup() for complete token creation.
+        // This service returns the SignedVoucher which can be used with a wallet to create tokens.
 
         return IssueVoucherResponse.builder()
                 .voucher(signedVoucher)
-                .token(token)
                 .build();
     }
 
@@ -463,28 +467,6 @@ public class VoucherService {
         }
     }
 
-    /**
-     * Serializes a signed voucher to Cashu token format (v4).
-     *
-     * <p>The token format is a base64-encoded representation that can be:
-     * <ul>
-     *   <li>Printed as a QR code</li>
-     *   <li>Shared via NFC</li>
-     *   <li>Sent as text (chat, email, etc.)</li>
-     * </ul>
-     *
-     * <p><b>TODO:</b> Implement full Cashu v4 token serialization.
-     * Current implementation returns a placeholder.
-     *
-     * @param voucher the voucher to serialize
-     * @return the token string in Cashu v4 format (starts with "cashuA")
-     */
-    private String serializeToToken(SignedVoucher voucher) {
-        // TODO: Implement full Cashu token v4 serialization
-        // For now, return a placeholder that includes the voucher ID
-        log.warn("Using placeholder token serialization - full implementation pending");
-        return "cashuA" + voucher.getSecret().getVoucherId().toString().replace("-", "");
-    }
 
     /**
      * Serializes merchant metadata map to JSON string.

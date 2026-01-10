@@ -121,7 +121,8 @@ class VoucherServiceTest {
             // Then
             assertThat(response).isNotNull();
             assertThat(response.getVoucher()).isNotNull();
-            assertThat(response.getToken()).isNotBlank();
+            // Token is not set by VoucherService - requires wallet/mint interaction
+            assertThat(response.getToken()).isNull();
             assertThat(response.getVoucherId()).isNotBlank();
             assertThat(response.getAmount()).isEqualTo(AMOUNT);
             assertThat(response.getUnit()).isEqualTo(UNIT);
