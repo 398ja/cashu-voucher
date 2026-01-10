@@ -6,6 +6,8 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherRequest;
 import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherResponse;
+import xyz.tcheeric.cashu.common.VoucherPaymentPayload;
+import xyz.tcheeric.cashu.common.VoucherPaymentRequest;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherLedgerPort;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
@@ -341,5 +343,123 @@ public class MerchantVerificationService {
             log.error("Redemption failed at marking stage: voucherId={}", voucherId, e);
             return RedeemVoucherResponse.failure(error);
         }
+    }
+
+    /**
+     * Validates a NUT-18V payment payload against the original payment request.
+     *
+     * <p>This method checks that the payment payload matches the original request:
+     * <ul>
+     *   <li>Payment ID matches (if present in request)</li>
+     *   <li>Issuer ID matches the merchant</li>
+     *   <li>Amount meets or exceeds the requested amount</li>
+     *   <li>Mint URL is permitted (if mints are restricted)</li>
+     *   <li>Proofs have DLEQ if offline verification was required</li>
+     * </ul>
+     *
+     * @param payload the payment payload received from the customer
+     * @param originalRequest the original payment request
+     * @return the verification result
+     */
+    public VerificationResult validatePaymentPayload(
+            @NonNull VoucherPaymentPayload payload,
+            @NonNull VoucherPaymentRequest originalRequest
+    ) {
+        log.info("Validating payment payload: payloadId={}, requestId={}",
+                payload.getId(), originalRequest.getPaymentId());
+
+        List<String> errors = new ArrayList<>();
+
+        // Check payment ID matches (if request had one)
+        if (originalRequest.getPaymentId() != null && !originalRequest.getPaymentId().isBlank()) {
+            if (!originalRequest.getPaymentId().equals(payload.getId())) {
+                errors.add(String.format(
+                        "Payment ID mismatch: expected '%s', got '%s'",
+                        originalRequest.getPaymentId(), payload.getId()
+                ));
+            }
+        }
+
+        // Check issuer ID matches
+        if (!originalRequest.getIssuerId().equals(payload.getIssuerId())) {
+            errors.add(String.format(
+                    "Issuer ID mismatch: expected '%s', got '%s'",
+                    originalRequest.getIssuerId(), payload.getIssuerId()
+            ));
+        }
+
+        // Check amount (if request specified one)
+        if (originalRequest.getAmount() != null) {
+            int payloadAmount = payload.getTotalAmount();
+            if (payloadAmount < originalRequest.getAmount()) {
+                errors.add(String.format(
+                        "Insufficient amount: expected at least %d, got %d",
+                        originalRequest.getAmount(), payloadAmount
+                ));
+            }
+        }
+
+        // Check mint is permitted (if request restricted mints)
+        if (originalRequest.getMints() != null && !originalRequest.getMints().isEmpty()) {
+            if (!originalRequest.isMintPermitted(payload.getMint())) {
+                errors.add(String.format(
+                        "Mint '%s' not in permitted list: %s",
+                        payload.getMint(), originalRequest.getMints()
+                ));
+            }
+        }
+
+        // Check DLEQ if offline verification was required
+        if (Boolean.TRUE.equals(originalRequest.getOfflineVerification())) {
+            if (!payload.allProofsHaveDLEQ()) {
+                errors.add("Offline verification required but proofs missing DLEQ");
+            }
+        }
+
+        if (errors.isEmpty()) {
+            log.info("Payment payload validation passed: payloadId={}", payload.getId());
+            return VerificationResult.success();
+        } else {
+            log.warn("Payment payload validation failed: payloadId={}, errors={}",
+                    payload.getId(), errors.size());
+            return VerificationResult.failure(errors);
+        }
+    }
+
+    /**
+     * Validates a NUT-18V payment payload structure against the original request.
+     *
+     * <p>This method is the main entry point for handling payment payloads
+     * received via the transport methods specified in the payment request.
+     * It validates the payload structure matches the original request.
+     *
+     * <p><b>Note:</b> This method validates the payload structure but does NOT
+     * verify individual voucher proofs or mark vouchers as redeemed. The caller
+     * should extract vouchers from the proofs and verify them separately using
+     * {@link #verifyOnline} or {@link #verifyOffline}, then call {@link #markRedeemed}
+     * after successful verification.
+     *
+     * @param payload the payment payload from the customer
+     * @param originalRequest the original payment request
+     * @return the verification result
+     */
+    public VerificationResult processPaymentPayload(
+            @NonNull VoucherPaymentPayload payload,
+            @NonNull VoucherPaymentRequest originalRequest
+    ) {
+        log.info("Processing payment payload: payloadId={}, proofCount={}",
+                payload.getId(), payload.getProofCount());
+
+        // First validate the payload against the request
+        VerificationResult validationResult = validatePaymentPayload(payload, originalRequest);
+        if (!validationResult.isValid()) {
+            return validationResult;
+        }
+
+        // Log successful processing
+        log.info("Payment payload processed successfully: payloadId={}, totalAmount={}",
+                payload.getId(), payload.getTotalAmount());
+
+        return VerificationResult.success();
     }
 }

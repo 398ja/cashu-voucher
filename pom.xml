@@ -7,7 +7,7 @@
 
     <groupId>xyz.tcheeric</groupId>
     <artifactId>cashu-voucher</artifactId>
-    <version>0.4.0</version>
+    <version>0.5.0</version>
     <packaging>pom</packaging>
 
     <name>Cashu Voucher</name>
@@ -29,7 +29,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Dependency versions -->
-        <cashu-lib.version>0.10.0</cashu-lib.version>
+        <cashu-lib.version>0.11.1</cashu-lib.version>
         <bip-utils.version>2.0.0</bip-utils.version>
         <nostr-java.version>1.2.0</nostr-java.version>
         <bouncycastle.version>1.78</bouncycastle.version>

@@ -159,11 +159,8 @@ Extract useful information from the response:
 ```java
 IssueVoucherResponse response = voucherService.issue(request);
 
-// Get the signed voucher
+// Get the signed voucher (published to ledger)
 SignedVoucher voucher = response.getVoucher();
-
-// Get the Cashu token (for sharing)
-String token = response.getToken();
 
 // Convenience methods
 String voucherId = response.getVoucherId();
@@ -172,7 +169,10 @@ String unit = response.getUnit();
 
 System.out.println("Voucher ID: " + voucherId);
 System.out.println("Amount: " + amount + " " + unit);
-System.out.println("Token: " + token);
+
+// Note: To create a shareable token (cashuB... format), use a wallet
+// implementation that can swap proofs at the mint with the voucher as secret.
+// See cashu-client's VoucherService.issueAndBackup() for the complete flow.
 ```
 
 ## Validate Before Issuing

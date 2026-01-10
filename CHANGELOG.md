@@ -11,6 +11,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.0] - 2026-01-10
+
+### Added
+
+- **NUT-18V VoucherPaymentRequest support** (Phase 2 integration)
+  - `GeneratePaymentRequestDTO` - Request DTO for generating payment requests with issuer ID, amount, transports, etc.
+  - `GeneratePaymentRequestResponse` - Response DTO with encoded `vreqA...` string and parsed request object
+  - `VoucherService.generatePaymentRequest()` - Generate NUT-18V payment requests with merchant, HTTP POST, and Nostr transports
+  - `MerchantVerificationService.validatePaymentPayload()` - Validate incoming payment payloads against original requests
+  - `MerchantVerificationService.processPaymentPayload()` - Full payment processing with validation and logging
+  - `NUT18VIntegrationTest` - 23 comprehensive integration tests
+
+### Changed
+
+- Updated cashu-lib dependency from 0.10.0 to 0.11.0 (adds VoucherPaymentRequest, VoucherPaymentPayload, VoucherTransport classes)
+- **Token creation moved to wallet layer**: Token serialization requires mint interaction (blind signatures, keyset) which is handled by the wallet layer (cashu-client)
+  - `VoucherService.issue()` now returns `SignedVoucher` without a token
+  - Token creation should use cashu-client's `VoucherService.issueAndBackup()` for the complete flow
+
+### Deprecated
+
+- **IssueVoucherResponse.token field**: Deprecated with `@Deprecated(since = "0.5.0", forRemoval = true)`
+  - Field will always be null when returned from `VoucherService.issue()`
+  - Use a wallet implementation to create shareable tokens from the `SignedVoucher`
+
+### Removed
+
+- **serializeToToken() method**: Removed from VoucherService as token creation requires mint interaction
+
+### Fixed
+
+- Improved input validation and error handling across modules
+
+---
+
 ## [0.4.0] - 2026-01-07
 
 ### BREAKING CHANGES
@@ -585,7 +620,8 @@ This is the initial release. No migration needed.
 
 ---
 
-[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.4.0...HEAD
+[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.5.0...HEAD
+[0.5.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.4.0...cashu-voucher-v0.5.0
 [0.4.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.7...cashu-voucher-v0.4.0
 [0.3.7]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.6...cashu-voucher-v0.3.7
 [0.3.6]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.5...cashu-voucher-v0.3.6

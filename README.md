@@ -101,7 +101,10 @@ IssueVoucherRequest request = IssueVoucherRequest.builder()
     .build();
 
 IssueVoucherResponse response = voucherService.issue(request);
-String token = response.getToken();  // Share with customer
+SignedVoucher voucher = response.getVoucher();  // Voucher is signed and published to ledger
+
+// To create a shareable token, use a wallet (e.g., cashu-client):
+// The wallet swaps proofs at the mint and creates a TokenV4 (cashuB...) token
 ```
 
 ### Verify a Voucher (Merchant)

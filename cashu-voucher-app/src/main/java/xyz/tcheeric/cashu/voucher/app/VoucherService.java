@@ -2,8 +2,12 @@ package xyz.tcheeric.cashu.voucher.app;
 
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import xyz.tcheeric.cashu.voucher.app.dto.GeneratePaymentRequestDTO;
+import xyz.tcheeric.cashu.voucher.app.dto.GeneratePaymentRequestResponse;
 import xyz.tcheeric.cashu.voucher.app.dto.IssueVoucherRequest;
 import xyz.tcheeric.cashu.voucher.app.dto.IssueVoucherResponse;
+import xyz.tcheeric.cashu.common.VoucherPaymentRequest;
+import xyz.tcheeric.cashu.common.VoucherTransport;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherBackupPort;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherLedgerPort;
 import xyz.tcheeric.cashu.common.VoucherSecret;
@@ -16,9 +20,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Main voucher service that orchestrates use cases.
@@ -62,13 +68,17 @@ import java.util.Optional;
  *     .build();
  *
  * IssueVoucherResponse response = service.issue(request);
- * System.out.println("Token: " + response.getToken());
+ * SignedVoucher voucher = response.getVoucher();
+ * System.out.println("Voucher ID: " + response.getVoucherId());
+ *
+ * // To create a shareable token, use a wallet (e.g., cashu-client)
+ * // that can swap proofs at the mint with the voucher as the secret.
  *
  * // Query status
  * Optional&lt;VoucherStatus&gt; status = service.queryStatus(response.getVoucherId());
  *
  * // Backup vouchers
- * service.backup(List.of(response.getVoucher()), userNostrPrivateKey);
+ * service.backup(List.of(voucher), userNostrPrivateKey);
  * </pre>
  *
  * @see VoucherLedgerPort
@@ -196,12 +206,12 @@ public class VoucherService {
             throw new RuntimeException("Failed to publish voucher to ledger", e);
         }
 
-        // Serialize to token
-        String token = serializeToToken(signedVoucher);
+        // Note: Token serialization requires mint interaction (blind signatures, keyset).
+        // Use cashu-client's VoucherService.issueAndBackup() for complete token creation.
+        // This service returns the SignedVoucher which can be used with a wallet to create tokens.
 
         return IssueVoucherResponse.builder()
                 .voucher(signedVoucher)
-                .token(token)
                 .build();
     }
 
@@ -342,6 +352,102 @@ public class VoucherService {
     }
 
     /**
+     * Generates a NUT-18V VoucherPaymentRequest for receiving voucher payments.
+     *
+     * <p>This method creates an encoded payment request that can be:
+     * <ul>
+     *   <li>Displayed as a QR code at point-of-sale</li>
+     *   <li>Shared via NFC, link, or message</li>
+     *   <li>Used to initiate voucher redemption flow</li>
+     * </ul>
+     *
+     * <p>The generated request uses the {@code vreqA} prefix format and includes
+     * the issuer ID, amount, and configured transports.
+     *
+     * <h3>Usage Example</h3>
+     * <pre>
+     * GeneratePaymentRequestDTO dto = GeneratePaymentRequestDTO.builder()
+     *     .issuerId("merchant123")
+     *     .amount(5000)
+     *     .unit("sat")
+     *     .description("Coffee purchase")
+     *     .callbackUrl("https://merchant.com/api/redeem")
+     *     .build();
+     *
+     * GeneratePaymentRequestResponse response = voucherService.generatePaymentRequest(dto);
+     * String qrContent = response.getEncodedRequest();
+     * </pre>
+     *
+     * @param dto the payment request parameters (must not be null)
+     * @return the response containing the encoded request and metadata
+     * @throws IllegalArgumentException if required parameters are missing
+     * @see xyz.tcheeric.cashu.common.VoucherPaymentRequest
+     */
+    public GeneratePaymentRequestResponse generatePaymentRequest(@NonNull GeneratePaymentRequestDTO dto) {
+        log.info("Generating payment request: issuerId={}, amount={}, unit={}",
+                dto.getIssuerId(), dto.getAmount(), dto.getUnit());
+
+        // Validate required fields
+        if (dto.getIssuerId() == null || dto.getIssuerId().isBlank()) {
+            throw new IllegalArgumentException("Issuer ID is required for payment request");
+        }
+        if (dto.getAmount() != null && (dto.getUnit() == null || dto.getUnit().isBlank())) {
+            throw new IllegalArgumentException("Unit is required when amount is specified");
+        }
+
+        // Generate payment ID if not provided
+        String paymentId = dto.getPaymentId();
+        if (paymentId == null || paymentId.isBlank()) {
+            paymentId = UUID.randomUUID().toString().substring(0, 8);
+            log.debug("Generated payment ID: {}", paymentId);
+        }
+
+        // Build transports list
+        List<VoucherTransport> transports = new ArrayList<>();
+
+        // Add merchant transport if requested
+        if (Boolean.TRUE.equals(dto.getIncludeMerchantTransport())) {
+            transports.add(VoucherTransport.merchant(
+                    "merchant:" + dto.getIssuerId(),
+                    dto.getIssuerId()
+            ));
+        }
+
+        // Add HTTP POST transport if callback URL provided
+        if (dto.getCallbackUrl() != null && !dto.getCallbackUrl().isBlank()) {
+            transports.add(VoucherTransport.httpPost(dto.getCallbackUrl()));
+        }
+
+        // Add Nostr transport if nprofile provided
+        if (dto.getNostrNprofile() != null && !dto.getNostrNprofile().isBlank()) {
+            transports.add(VoucherTransport.nostrNip17(dto.getNostrNprofile()));
+        }
+
+        // Build the payment request
+        VoucherPaymentRequest request = VoucherPaymentRequest.builder()
+                .paymentId(paymentId)
+                .issuerId(dto.getIssuerId())
+                .amount(dto.getAmount())
+                .unit(dto.getUnit())
+                .description(dto.getDescription())
+                .singleUse(dto.getSingleUse())
+                .offlineVerification(dto.getOfflineVerification())
+                .expiresAt(dto.getExpiresAt())
+                .mints(dto.getMints() != null ? new ArrayList<>(dto.getMints()) : new ArrayList<>())
+                .transports(transports)
+                .build();
+
+        // Serialize to encoded format
+        boolean clickable = Boolean.TRUE.equals(dto.getClickable());
+        String encodedRequest = request.serialize(clickable);
+
+        log.info("Generated payment request: paymentId={}, encoded length={}",
+                paymentId, encodedRequest.length());
+
+        return GeneratePaymentRequestResponse.from(encodedRequest, request);
+    }
+
+    /**
      * Validates an issue voucher request.
      *
      * @param request the request to validate
@@ -362,28 +468,6 @@ public class VoucherService {
         }
     }
 
-    /**
-     * Serializes a signed voucher to Cashu token format (v4).
-     *
-     * <p>The token format is a base64-encoded representation that can be:
-     * <ul>
-     *   <li>Printed as a QR code</li>
-     *   <li>Shared via NFC</li>
-     *   <li>Sent as text (chat, email, etc.)</li>
-     * </ul>
-     *
-     * <p><b>TODO:</b> Implement full Cashu v4 token serialization.
-     * Current implementation returns a placeholder.
-     *
-     * @param voucher the voucher to serialize
-     * @return the token string in Cashu v4 format (starts with "cashuA")
-     */
-    private String serializeToToken(SignedVoucher voucher) {
-        // TODO: Implement full Cashu token v4 serialization
-        // For now, return a placeholder that includes the voucher ID
-        log.warn("Using placeholder token serialization - full implementation pending");
-        return "cashuA" + voucher.getSecret().getVoucherId().toString().replace("-", "");
-    }
 
     /**
      * Serializes merchant metadata map to JSON string.
