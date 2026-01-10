@@ -82,12 +82,6 @@ public class GeneratePaymentRequestDTO {
     private Boolean offlineVerification = false;
 
     /**
-     * Optional: Request expiry time as Unix timestamp (seconds).
-     * If null, the request does not expire.
-     */
-    private Long expiresAt;
-
-    /**
      * Optional: List of permitted mint URLs.
      * If empty/null, vouchers from any mint are accepted.
      */
