@@ -180,7 +180,7 @@ GeneratePaymentRequestResponse response = voucherService.generatePaymentRequest(
 String encodedRequest = response.getEncodedRequest();
 
 // Access the underlying request object
-VoucherPaymentRequest paymentRequest = response.getPaymentRequest();
+VoucherPaymentRequest paymentRequest = response.getRequest();
 String paymentId = paymentRequest.getPaymentId();
 String issuerId = paymentRequest.getIssuerId();
 Integer amount = paymentRequest.getAmount();
@@ -194,22 +194,22 @@ When a customer pays, validate and process the payment payload:
 // Customer's wallet sends a VoucherPaymentPayload
 VoucherPaymentPayload payload = ...; // Received via callback or transport
 
-// Validate the payment
-MerchantVerificationService.PaymentValidationResult result =
+// Validate the payment payload against the original request
+MerchantVerificationService.VerificationResult result =
     merchantService.validatePaymentPayload(payload, originalRequest);
 
 if (result.isValid()) {
-    // Process the payment
-    MerchantVerificationService.PaymentProcessingResult processed =
+    // Payment payload is valid - process it
+    MerchantVerificationService.VerificationResult processed =
         merchantService.processPaymentPayload(payload, originalRequest);
 
-    if (processed.isSuccess()) {
+    if (processed.isValid()) {
         // Payment accepted - fulfill the order
-        System.out.println("Payment received: " + processed.getMessage());
+        System.out.println("Payment validated successfully");
     }
 } else {
     // Payment rejected
-    System.out.println("Payment rejected: " + result.getReason());
+    System.out.println("Payment rejected: " + result.getErrorMessage());
 }
 ```
 

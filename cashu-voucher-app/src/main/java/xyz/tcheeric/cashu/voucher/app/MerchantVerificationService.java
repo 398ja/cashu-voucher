@@ -427,16 +427,17 @@ public class MerchantVerificationService {
     }
 
     /**
-     * Processes a NUT-18V payment payload and marks vouchers as redeemed.
+     * Validates a NUT-18V payment payload structure against the original request.
      *
      * <p>This method is the main entry point for handling payment payloads
      * received via the transport methods specified in the payment request.
-     * It validates the payload and then processes each proof.
+     * It validates the payload structure matches the original request.
      *
      * <p><b>Note:</b> This method validates the payload structure but does NOT
-     * verify individual voucher proofs. The caller should extract vouchers from
-     * the proofs and verify them separately using {@link #verifyOnline} or
-     * {@link #verifyOffline}.
+     * verify individual voucher proofs or mark vouchers as redeemed. The caller
+     * should extract vouchers from the proofs and verify them separately using
+     * {@link #verifyOnline} or {@link #verifyOffline}, then call {@link #markRedeemed}
+     * after successful verification.
      *
      * @param payload the payment payload from the customer
      * @param originalRequest the original payment request
