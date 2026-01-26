@@ -11,6 +11,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.0] - 2026-01-26
+
+### Added
+
+- **VoucherFingerprint utility** (`cashu-voucher-domain`)
+  - SHA-256 cryptographic fingerprinting for voucher duplicate detection
+  - Deterministic hash from voucherId + issuerId + signature
+  - 64-character lowercase hex output
+  - Input validation with clear error messages
+  - `compute(SignedVoucher)`, `compute(VoucherSecret)`, `compute(String, String, String)` overloads
+  - `isValid(String)` for fingerprint format validation
+
+- **VoucherRedemptionPort interface** (`cashu-voucher-app`)
+  - Port abstraction for redemption tracking storage
+  - `tryRecordRedemption(fingerprint, voucherId, redeemedBy)` - atomic compare-and-swap for concurrent safety
+  - `isRedeemed(fingerprint)` - fast lookup for duplicate detection
+  - `getRedemption(fingerprint)` - retrieve redemption details
+  - `RedemptionRecord` - immutable record with fingerprint, voucherId, redeemedBy, redeemedAt
+
+- **VoucherRedemptionService** (`cashu-voucher-app`)
+  - Defense-in-depth redemption with 7-step validation flow
+  - Fingerprint-based duplicate detection (fast path rejection)
+  - Signature verification before processing
+  - Expiry validation
+  - Model B merchant verification (voucher issuerId must match redeeming merchant)
+  - Optional online ledger status verification
+  - Atomic redemption recording with concurrent redemption handling
+  - Standard error codes: `DUPLICATE_REDEMPTION`, `INVALID_SIGNATURE`, `VOUCHER_EXPIRED`, `MERCHANT_MISMATCH`, `VOUCHER_NOT_FOUND`, `INVALID_STATE`, `CONCURRENT_REDEMPTION`
+
+- **RedeemVoucherResponse enhancements** (`cashu-voucher-app`)
+  - Added `fingerprint` field for tracking
+  - Added `error` field for structured error codes
+  - Added `message` field for human-readable descriptions
+  - Added `voucherId`, `amount`, `unit` convenience accessors
+  - Added `failure(String errorCode, String message)` factory method
+
+### Changed
+
+- Updated cashu-lib dependency from 0.11.0 to 0.13.0
+- Updated nostr-java dependency from 1.1.0 to 1.3.0
+
+---
+
 ## [0.5.0] - 2026-01-10
 
 ### Added
@@ -620,7 +663,8 @@ This is the initial release. No migration needed.
 
 ---
 
-[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.5.0...HEAD
+[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.6.0...HEAD
+[0.6.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.5.0...cashu-voucher-v0.6.0
 [0.5.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.4.0...cashu-voucher-v0.5.0
 [0.4.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.7...cashu-voucher-v0.4.0
 [0.3.7]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.6...cashu-voucher-v0.3.7
