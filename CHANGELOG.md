@@ -49,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Updated cashu-lib dependency from 0.11.0 to 0.13.0
+- Updated cashu-lib dependency from 0.11.0 to 0.14.0
 - Updated nostr-java dependency from 1.1.0 to 1.3.0
 
 ---
