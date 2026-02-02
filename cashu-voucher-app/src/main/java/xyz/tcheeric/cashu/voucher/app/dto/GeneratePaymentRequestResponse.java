@@ -4,7 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import xyz.tcheeric.cashu.common.VoucherPaymentRequest;
+import xyz.tcheeric.cashu.common.nut18.VoucherPaymentRequest;
 
 /**
  * Response DTO for generating a NUT-18V VoucherPaymentRequest.

@@ -3,7 +3,7 @@ package xyz.tcheeric.cashu.voucher.domain;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NonNull;
-import xyz.tcheeric.cashu.common.VoucherSecret;
+import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 
 import java.util.ArrayList;
 import java.util.Collections;

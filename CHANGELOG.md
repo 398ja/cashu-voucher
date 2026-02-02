@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.1] - 2026-02-02
+
+### Changed
+
+- **cashu-lib dependency updated to 0.16.0** (`all modules`)
+  - Updated imports for voucher-related classes moved to NUT-specific packages:
+    - `VoucherSecret`, `VoucherPaymentRequest`, `VoucherPaymentPayload`, `VoucherTransport`, `VoucherTags`, `PaymentPayloadProof` → `xyz.tcheeric.cashu.common.nut18.*`
+    - `WellKnownSecret` → `xyz.tcheeric.cashu.common.nut10.WellKnownSecret`
+
+---
+
 ## [0.6.0] - 2026-01-26
 
 ### Added

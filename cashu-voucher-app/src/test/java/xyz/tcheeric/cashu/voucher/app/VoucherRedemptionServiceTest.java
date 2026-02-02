@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import xyz.tcheeric.cashu.common.VoucherSecret;
+import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherResponse;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherLedgerPort;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherRedemptionPort;
