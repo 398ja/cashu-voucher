@@ -13,7 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherRequest;
 import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherResponse;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherLedgerPort;
-import xyz.tcheeric.cashu.common.VoucherSecret;
+import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;

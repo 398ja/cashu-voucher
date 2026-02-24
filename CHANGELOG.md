@@ -11,6 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.0] - 2026-02-24
+
+### Changed
+
+- **Upgraded nostr-java from 1.3.0 to 2.0.0** (`all modules`)
+  - Renamed module dependencies: `nostr-java-base` → `nostr-java-core`, `nostr-java-encryption` → `nostr-java-identity`
+  - Removed deprecated `nostr-java-crypto` and `nostr-java-util` modules
+  - Updated `VoucherBackupPayload` to use `Kinds.ENCRYPTED_DIRECT_MESSAGE` constant
+  - Updated `VoucherLedgerEvent.getTagValue()` to use `GenericTag.getParams()` API (replaces `IdentifierTag`/`ElementAttribute`)
+
+### Added
+
+- **Secure coding guidelines** (`docs/developer/SECURE_CODING.md`)
+
+---
+
+## [0.6.1] - 2026-02-02
+
+### Changed
+
+- **cashu-lib dependency updated to 0.16.0** (`all modules`)
+  - Updated imports for voucher-related classes moved to NUT-specific packages:
+    - `VoucherSecret`, `VoucherPaymentRequest`, `VoucherPaymentPayload`, `VoucherTransport`, `VoucherTags`, `PaymentPayloadProof` → `xyz.tcheeric.cashu.common.nut18.*`
+    - `WellKnownSecret` → `xyz.tcheeric.cashu.common.nut10.WellKnownSecret`
+
+---
+
 ## [0.6.0] - 2026-01-26
 
 ### Added
@@ -663,7 +690,9 @@ This is the initial release. No migration needed.
 
 ---
 
-[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.6.0...HEAD
+[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.7.0...HEAD
+[0.7.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.6.1...cashu-voucher-v0.7.0
+[0.6.1]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.6.0...cashu-voucher-v0.6.1
 [0.6.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.5.0...cashu-voucher-v0.6.0
 [0.5.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.4.0...cashu-voucher-v0.5.0
 [0.4.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.7...cashu-voucher-v0.4.0

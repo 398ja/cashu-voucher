@@ -8,7 +8,7 @@
     <parent>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher</artifactId>
-        <version>0.6.0</version>
+        <version>0.7.0</version>
     </parent>
 
     <artifactId>cashu-voucher-app</artifactId>
@@ -89,7 +89,7 @@
         <!-- Nostr Schnorr signatures (secp256k1) - for test key generation -->
         <dependency>
             <groupId>xyz.tcheeric</groupId>
-            <artifactId>nostr-java-crypto</artifactId>
+            <artifactId>nostr-java-core</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

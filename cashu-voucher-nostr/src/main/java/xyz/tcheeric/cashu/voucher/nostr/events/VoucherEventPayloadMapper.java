@@ -11,7 +11,7 @@ import lombok.Setter;
 import nostr.util.NostrUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.tcheeric.cashu.common.VoucherSecret;
+import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 

@@ -7,11 +7,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import nostr.base.ElementAttribute;
 import nostr.event.BaseTag;
 import nostr.event.impl.GenericEvent;
 import nostr.event.tag.GenericTag;
-import nostr.event.tag.IdentifierTag;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 import xyz.tcheeric.cashu.voucher.nostr.VoucherNostrException;
@@ -260,15 +258,10 @@ public class VoucherLedgerEvent extends GenericEvent {
 
         for (BaseTag tag : tags) {
             if (tag.getCode() != null && tag.getCode().equals(tagName)) {
-                // Handle IdentifierTag (registered for "d" tag in nostr-java)
-                if (tag instanceof IdentifierTag identifierTag) {
-                    return identifierTag.getUuid();
-                }
-                // Handle GenericTag (for unregistered tags like status, amount, unit)
                 if (tag instanceof GenericTag genericTag) {
-                    List<ElementAttribute> attrs = genericTag.getAttributes();
-                    if (attrs != null && !attrs.isEmpty()) {
-                        return attrs.get(0).value().toString();
+                    List<String> params = genericTag.getParams();
+                    if (params != null && !params.isEmpty()) {
+                        return params.get(0);
                     }
                 }
             }

@@ -7,7 +7,7 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NonNull;
 import org.bouncycastle.util.encoders.Hex;
-import xyz.tcheeric.cashu.common.VoucherSecret;
+import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 
 import java.util.Objects;
 import java.util.UUID;

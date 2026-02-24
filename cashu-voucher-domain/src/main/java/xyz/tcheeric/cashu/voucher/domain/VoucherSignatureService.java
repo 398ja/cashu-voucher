@@ -7,9 +7,9 @@ import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.tcheeric.cashu.common.VoucherSecret;
-import xyz.tcheeric.cashu.common.VoucherTags;
-import xyz.tcheeric.cashu.common.WellKnownSecret;
+import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
+import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
+import xyz.tcheeric.cashu.common.nut18.VoucherTags;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

@@ -1,7 +1,7 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
 import lombok.experimental.UtilityClass;
-import xyz.tcheeric.cashu.common.VoucherSecret;
+import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
