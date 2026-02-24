@@ -146,7 +146,9 @@ IssueVoucherRequest request = IssueVoucherRequest.builder()
     .build();
 
 IssueVoucherResponse response = voucherService.issue(request);
-String token = response.getToken();  // Share with customer
+SignedVoucher voucher = response.getVoucher();  // Voucher is signed and published
+
+// To share with customer, use a wallet to create a token (cashuB... format)
 
 // Verify as merchant
 VerificationResult result = merchantService.verifyOnline(voucher, "my-coffee-shop");

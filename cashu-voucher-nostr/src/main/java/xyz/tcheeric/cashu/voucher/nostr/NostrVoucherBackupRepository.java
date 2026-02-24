@@ -270,7 +270,8 @@ public class NostrVoucherBackupRepository implements VoucherBackupPort {
 
                     // Merge into map (latest timestamp wins)
                     for (SignedVoucher voucher : vouchers) {
-                        String voucherId = voucher.getSecret().getVoucherId();
+                        String voucherId = voucher.getSecret().getVoucherId() != null
+                                ? voucher.getSecret().getVoucherId().toString() : null;
 
                         VoucherWithTimestamp existing = voucherMap.get(voucherId);
                         if (existing == null || eventTimestamp > existing.timestamp) {

@@ -137,7 +137,8 @@ public class StoredVoucher {
      * Convenience accessor for voucher ID.
      */
     public String getVoucherId() {
-        return voucher != null ? voucher.getSecret().getVoucherId() : null;
+        return voucher != null && voucher.getSecret().getVoucherId() != null
+                ? voucher.getSecret().getVoucherId().toString() : null;
     }
 
     /**

@@ -156,7 +156,8 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
      */
     @Override
     public void publish(@NonNull SignedVoucher voucher, @NonNull VoucherStatus status) {
-        String voucherId = voucher.getSecret().getVoucherId();
+        String voucherId = voucher.getSecret().getVoucherId() != null
+                ? voucher.getSecret().getVoucherId().toString() : null;
         log.info("Publishing voucher to ledger: voucherId={}, status={}", voucherId, status);
 
         try {

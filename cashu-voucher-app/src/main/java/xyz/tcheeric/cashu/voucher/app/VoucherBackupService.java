@@ -282,7 +282,8 @@ public class VoucherBackupService {
             // Create set of restored voucher IDs
             Map<String, SignedVoucher> restoredMap = restored.stream()
                     .collect(Collectors.toMap(
-                            v -> v.getSecret().getVoucherId(),
+                            v -> v.getSecret().getVoucherId() != null
+                                    ? v.getSecret().getVoucherId().toString() : "",
                             v -> v
                     ));
 

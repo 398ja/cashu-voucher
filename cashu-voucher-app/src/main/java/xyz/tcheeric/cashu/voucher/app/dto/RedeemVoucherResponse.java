@@ -20,7 +20,7 @@ import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
  *     System.out.println("Redeemed: " + response.getAmount() + " " + response.getUnit());
  *     // Credit customer account, etc.
  * } else {
- *     System.err.println("Redemption failed: " + response.getErrorMessage());
+ *     System.err.println("Redemption failed: " + response.getError());
  * }
  * </pre>
  */
@@ -41,29 +41,74 @@ public class RedeemVoucherResponse {
     private SignedVoucher voucher;
 
     /**
-     * Error message if redemption failed (null if successful).
+     * The voucher ID (set explicitly when voucher object is not included).
      */
+    private String voucherId;
+
+    /**
+     * The cryptographic fingerprint of the voucher.
+     * Used for duplicate detection and tracking.
+     */
+    private String fingerprint;
+
+    /**
+     * The amount redeemed.
+     */
+    private Long amount;
+
+    /**
+     * The currency unit.
+     */
+    private String unit;
+
+    /**
+     * Error code if redemption failed (null if successful).
+     * Standard codes: DUPLICATE_REDEMPTION, INVALID_SIGNATURE, VOUCHER_EXPIRED,
+     * MERCHANT_MISMATCH, VOUCHER_NOT_FOUND, INVALID_STATE, CONCURRENT_REDEMPTION
+     */
+    private String error;
+
+    /**
+     * Human-readable message describing the result.
+     */
+    private String message;
+
+    /**
+     * Error message if redemption failed (null if successful).
+     * @deprecated Use {@link #getError()} and {@link #getMessage()} instead
+     */
+    @Deprecated
     private String errorMessage;
 
     /**
-     * The amount redeemed (convenience accessor).
+     * The amount redeemed (convenience accessor from voucher if not set directly).
      */
     public Long getAmount() {
+        if (amount != null) {
+            return amount;
+        }
         return voucher != null ? voucher.getSecret().getFaceValue() : null;
     }
 
     /**
-     * The currency unit (convenience accessor).
+     * The currency unit (convenience accessor from voucher if not set directly).
      */
     public String getUnit() {
+        if (unit != null) {
+            return unit;
+        }
         return voucher != null ? voucher.getSecret().getUnit() : null;
     }
 
     /**
-     * The voucher ID (convenience accessor).
+     * The voucher ID (convenience accessor from voucher if not set directly).
      */
     public String getVoucherId() {
-        return voucher != null ? voucher.getSecret().getVoucherId() : null;
+        if (voucherId != null) {
+            return voucherId;
+        }
+        return voucher != null && voucher.getSecret().getVoucherId() != null
+                ? voucher.getSecret().getVoucherId().toString() : null;
     }
 
     /**
@@ -73,6 +118,7 @@ public class RedeemVoucherResponse {
         return RedeemVoucherResponse.builder()
                 .success(true)
                 .voucher(voucher)
+                .message("Voucher redeemed successfully")
                 .build();
     }
 
@@ -83,6 +129,23 @@ public class RedeemVoucherResponse {
         return RedeemVoucherResponse.builder()
                 .success(false)
                 .errorMessage(errorMessage)
+                .message(errorMessage)
+                .build();
+    }
+
+    /**
+     * Creates a failed redemption response with error code.
+     *
+     * @param errorCode the error code (e.g., DUPLICATE_REDEMPTION)
+     * @param message human-readable error description
+     * @return failure response
+     */
+    public static RedeemVoucherResponse failure(String errorCode, String message) {
+        return RedeemVoucherResponse.builder()
+                .success(false)
+                .error(errorCode)
+                .message(message)
+                .errorMessage(message) // backward compatibility
                 .build();
     }
 }

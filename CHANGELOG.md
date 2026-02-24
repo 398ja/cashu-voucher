@@ -11,6 +11,187 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.0] - 2026-02-24
+
+### Changed
+
+- **Upgraded nostr-java from 1.3.0 to 2.0.0** (`all modules`)
+  - Renamed module dependencies: `nostr-java-base` → `nostr-java-core`, `nostr-java-encryption` → `nostr-java-identity`
+  - Removed deprecated `nostr-java-crypto` and `nostr-java-util` modules
+  - Updated `VoucherBackupPayload` to use `Kinds.ENCRYPTED_DIRECT_MESSAGE` constant
+  - Updated `VoucherLedgerEvent.getTagValue()` to use `GenericTag.getParams()` API (replaces `IdentifierTag`/`ElementAttribute`)
+
+### Added
+
+- **Secure coding guidelines** (`docs/developer/SECURE_CODING.md`)
+
+---
+
+## [0.6.1] - 2026-02-02
+
+### Changed
+
+- **cashu-lib dependency updated to 0.16.0** (`all modules`)
+  - Updated imports for voucher-related classes moved to NUT-specific packages:
+    - `VoucherSecret`, `VoucherPaymentRequest`, `VoucherPaymentPayload`, `VoucherTransport`, `VoucherTags`, `PaymentPayloadProof` → `xyz.tcheeric.cashu.common.nut18.*`
+    - `WellKnownSecret` → `xyz.tcheeric.cashu.common.nut10.WellKnownSecret`
+
+---
+
+## [0.6.0] - 2026-01-26
+
+### Added
+
+- **VoucherFingerprint utility** (`cashu-voucher-domain`)
+  - SHA-256 cryptographic fingerprinting for voucher duplicate detection
+  - Deterministic hash from voucherId + issuerId + signature
+  - 64-character lowercase hex output
+  - Input validation with clear error messages
+  - `compute(SignedVoucher)`, `compute(VoucherSecret)`, `compute(String, String, String)` overloads
+  - `isValid(String)` for fingerprint format validation
+
+- **VoucherRedemptionPort interface** (`cashu-voucher-app`)
+  - Port abstraction for redemption tracking storage
+  - `tryRecordRedemption(fingerprint, voucherId, redeemedBy)` - atomic compare-and-swap for concurrent safety
+  - `isRedeemed(fingerprint)` - fast lookup for duplicate detection
+  - `getRedemption(fingerprint)` - retrieve redemption details
+  - `RedemptionRecord` - immutable record with fingerprint, voucherId, redeemedBy, redeemedAt
+
+- **VoucherRedemptionService** (`cashu-voucher-app`)
+  - Defense-in-depth redemption with 7-step validation flow
+  - Fingerprint-based duplicate detection (fast path rejection)
+  - Signature verification before processing
+  - Expiry validation
+  - Model B merchant verification (voucher issuerId must match redeeming merchant)
+  - Optional online ledger status verification
+  - Atomic redemption recording with concurrent redemption handling
+  - Standard error codes: `DUPLICATE_REDEMPTION`, `INVALID_SIGNATURE`, `VOUCHER_EXPIRED`, `MERCHANT_MISMATCH`, `VOUCHER_NOT_FOUND`, `INVALID_STATE`, `CONCURRENT_REDEMPTION`
+
+- **RedeemVoucherResponse enhancements** (`cashu-voucher-app`)
+  - Added `fingerprint` field for tracking
+  - Added `error` field for structured error codes
+  - Added `message` field for human-readable descriptions
+  - Added `voucherId`, `amount`, `unit` convenience accessors
+  - Added `failure(String errorCode, String message)` factory method
+
+### Changed
+
+- Updated cashu-lib dependency from 0.11.0 to 0.14.0
+- Updated nostr-java dependency from 1.1.0 to 1.3.0
+
+---
+
+## [0.5.0] - 2026-01-10
+
+### Added
+
+- **NUT-18V VoucherPaymentRequest support** (Phase 2 integration)
+  - `GeneratePaymentRequestDTO` - Request DTO for generating payment requests with issuer ID, amount, transports, etc.
+  - `GeneratePaymentRequestResponse` - Response DTO with encoded `vreqA...` string and parsed request object
+  - `VoucherService.generatePaymentRequest()` - Generate NUT-18V payment requests with merchant, HTTP POST, and Nostr transports
+  - `MerchantVerificationService.validatePaymentPayload()` - Validate incoming payment payloads against original requests
+  - `MerchantVerificationService.processPaymentPayload()` - Full payment processing with validation and logging
+  - `NUT18VIntegrationTest` - 23 comprehensive integration tests
+
+### Changed
+
+- Updated cashu-lib dependency from 0.10.0 to 0.11.0 (adds VoucherPaymentRequest, VoucherPaymentPayload, VoucherTransport classes)
+- **Token creation moved to wallet layer**: Token serialization requires mint interaction (blind signatures, keyset) which is handled by the wallet layer (cashu-client)
+  - `VoucherService.issue()` now returns `SignedVoucher` without a token
+  - Token creation should use cashu-client's `VoucherService.issueAndBackup()` for the complete flow
+
+### Deprecated
+
+- **IssueVoucherResponse.token field**: Deprecated with `@Deprecated(since = "0.5.0", forRemoval = true)`
+  - Field will always be null when returned from `VoucherService.issue()`
+  - Use a wallet implementation to create shareable tokens from the `SignedVoucher`
+
+### Removed
+
+- **serializeToToken() method**: Removed from VoucherService as token creation requires mint interaction
+
+### Fixed
+
+- Improved input validation and error handling across modules
+
+---
+
+## [0.4.0] - 2026-01-07
+
+### BREAKING CHANGES
+
+- **VoucherSecret removed from domain module**: The `VoucherSecret` class has been removed from `cashu-voucher-domain`. The project now uses `xyz.tcheeric.cashu.common.VoucherSecret` from cashu-lib 0.10.0, which provides NUT-10 compliant tag-based storage for voucher metadata including issuer signature and public key.
+
+- **SignedVoucher API changed**:
+  - Now wraps a `VoucherSecret` that stores signature and public key in NUT-10 compliant tags
+  - Constructor now takes only a `VoucherSecret` (must have signature and public key set)
+  - Added `SignedVoucher.create()` static factory method for creating vouchers with all parameters
+  - Added convenience getters (`getVoucherId()`, `getIssuerId()`, `getUnit()`, etc.) that delegate to the wrapped secret
+
+- **VoucherSignatureService API changed**:
+  - `verify(VoucherSecret)` now takes only a VoucherSecret instead of `verify(VoucherSecret, byte[], String)`
+  - Signature and public key are now read from VoucherSecret's NUT-10 tags
+
+### Removed
+
+- **VoucherSecret** class from domain module (use `xyz.tcheeric.cashu.common.VoucherSecret` from cashu-lib)
+- **VoucherSecretSerializer** class (no longer needed)
+- **VoucherSecretTest** class (test for removed class)
+
+### Changed
+
+- Updated cashu-lib dependency from 0.9.1 to 0.10.0
+- Added cashu-lib-common dependency to cashu-voucher-domain module
+- Updated all modules to use `VoucherSecret` from cashu-lib-common
+- Refactored `VoucherEventPayloadMapper` to use new VoucherSecret API
+- Updated all test classes to work with new VoucherSecret and SignedVoucher APIs
+
+### Migration Guide
+
+If you were using `VoucherSecret` from cashu-voucher-domain:
+
+1. Replace imports:
+   ```java
+   // Before
+   import xyz.tcheeric.cashu.voucher.domain.VoucherSecret;
+
+   // After
+   import xyz.tcheeric.cashu.common.VoucherSecret;
+   ```
+
+2. Update VoucherSecret creation to use the builder:
+   ```java
+   VoucherSecret secret = VoucherSecret.builder()
+       .voucherId(UUID.randomUUID())
+       .issuerId("merchant-123")
+       .unit("sat")
+       .faceValue(1000L)
+       .backingStrategy("FIXED")
+       .issuanceRatio(1.0)
+       .faceDecimals(0)
+       .build();
+   ```
+
+3. Update SignedVoucher creation:
+   ```java
+   // Sign the secret first (adds signature and public key to tags)
+   VoucherSignatureService.sign(secret, privateKeyHex);
+
+   // Then create SignedVoucher
+   SignedVoucher signed = new SignedVoucher(secret);
+   ```
+
+4. Update verification calls:
+   ```java
+   // Before
+   VoucherSignatureService.verify(secret, signatureBytes, publicKeyHex);
+
+   // After (signature and publicKey are read from secret's tags)
+   VoucherSignatureService.verify(secret);
+   ```
+
+---
+
 ## [0.3.7] - 2025-12-28
 
 ### Fixed
@@ -509,7 +690,12 @@ This is the initial release. No migration needed.
 
 ---
 
-[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.7...HEAD
+[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.7.0...HEAD
+[0.7.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.6.1...cashu-voucher-v0.7.0
+[0.6.1]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.6.0...cashu-voucher-v0.6.1
+[0.6.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.5.0...cashu-voucher-v0.6.0
+[0.5.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.4.0...cashu-voucher-v0.5.0
+[0.4.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.7...cashu-voucher-v0.4.0
 [0.3.7]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.6...cashu-voucher-v0.3.7
 [0.3.6]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.3.5...cashu-voucher-v0.3.6
 [0.3.2]: https://github.com/yourusername/cashu-voucher/compare/v0.1.0...cashu-voucher-v0.3.2

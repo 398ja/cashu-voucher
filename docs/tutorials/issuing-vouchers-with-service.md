@@ -160,19 +160,20 @@ IssueVoucherResponse response = voucherService.issue(request);
 
 // Get results
 SignedVoucher voucher = response.getVoucher();
-String token = response.getToken();
 
 System.out.println("Voucher issued!");
 System.out.println("  ID:     " + response.getVoucherId());
 System.out.println("  Amount: " + response.getAmount() + " " + response.getUnit());
-System.out.println("  Token:  " + token);
 ```
 
 The `issue()` method automatically:
 1. Creates the `VoucherSecret`
 2. Signs it with your private key
 3. Publishes to the ledger with `ISSUED` status
-4. Returns the voucher and token
+4. Returns the signed voucher
+
+> **Note:** To create a shareable token (`cashuB...` format), use a wallet
+> implementation (e.g., cashu-client) that can swap proofs at the mint.
 
 ## Step 5: Query Voucher Status
 
