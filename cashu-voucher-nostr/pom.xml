@@ -28,10 +28,10 @@
             <artifactId>cashu-voucher-app</artifactId>
         </dependency>
 
-        <!-- Nostr Java -->
+        <!-- Nostr Java 2.0 -->
         <dependency>
             <groupId>xyz.tcheeric</groupId>
-            <artifactId>nostr-java-base</artifactId>
+            <artifactId>nostr-java-core</artifactId>
         </dependency>
         <dependency>
             <groupId>xyz.tcheeric</groupId>
@@ -39,15 +39,11 @@
         </dependency>
         <dependency>
             <groupId>xyz.tcheeric</groupId>
-            <artifactId>nostr-java-encryption</artifactId>
+            <artifactId>nostr-java-identity</artifactId>
         </dependency>
         <dependency>
             <groupId>xyz.tcheeric</groupId>
             <artifactId>nostr-java-event</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>xyz.tcheeric</groupId>
-            <artifactId>nostr-java-util</artifactId>
         </dependency>
 
         <!-- Crypto -->

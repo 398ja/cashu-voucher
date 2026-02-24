@@ -31,7 +31,7 @@
         <!-- Dependency versions -->
         <cashu-lib.version>0.16.0</cashu-lib.version>
         <bip-utils.version>2.0.0</bip-utils.version>
-        <nostr-java.version>1.3.0</nostr-java.version>
+        <nostr-java.version>2.0.0</nostr-java.version>
         <bouncycastle.version>1.78</bouncycastle.version>
         <jackson.version>2.17.0</jackson.version>
         <lombok.version>1.18.30</lombok.version>
@@ -96,10 +96,10 @@
                 <version>${bouncycastle.version}</version>
             </dependency>
 
-            <!-- Nostr Java -->
+            <!-- Nostr Java 2.0 -->
             <dependency>
                 <groupId>xyz.tcheeric</groupId>
-                <artifactId>nostr-java-base</artifactId>
+                <artifactId>nostr-java-core</artifactId>
                 <version>${nostr-java.version}</version>
             </dependency>
             <dependency>
@@ -109,22 +109,12 @@
             </dependency>
             <dependency>
                 <groupId>xyz.tcheeric</groupId>
-                <artifactId>nostr-java-encryption</artifactId>
+                <artifactId>nostr-java-identity</artifactId>
                 <version>${nostr-java.version}</version>
             </dependency>
             <dependency>
                 <groupId>xyz.tcheeric</groupId>
                 <artifactId>nostr-java-event</artifactId>
-                <version>${nostr-java.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>xyz.tcheeric</groupId>
-                <artifactId>nostr-java-crypto</artifactId>
-                <version>${nostr-java.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>xyz.tcheeric</groupId>
-                <artifactId>nostr-java-util</artifactId>
                 <version>${nostr-java.version}</version>
             </dependency>
 

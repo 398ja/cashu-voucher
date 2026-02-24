@@ -41,7 +41,7 @@
         <!-- Nostr Schnorr signatures (secp256k1) -->
         <dependency>
             <groupId>xyz.tcheeric</groupId>
-            <artifactId>nostr-java-crypto</artifactId>
+            <artifactId>nostr-java-core</artifactId>
         </dependency>
 
         <!-- Jackson for CBOR serialization -->

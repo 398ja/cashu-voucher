@@ -8,8 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-import nostr.base.Kind;
-import nostr.base.PrivateKey;
+import nostr.base.Kinds;
 import nostr.base.PublicKey;
 import nostr.crypto.Point;
 import nostr.crypto.nip44.EncryptedPayloads;
@@ -99,7 +98,7 @@ public class VoucherBackupPayload {
     /**
      * Event kind for encrypted direct messages (NIP-04/NIP-44).
      */
-    public static final int KIND_ENCRYPTED_DM = Kind.ENCRYPTED_DIRECT_MESSAGE.getValue();
+    public static final int KIND_ENCRYPTED_DM = Kinds.ENCRYPTED_DIRECT_MESSAGE;
 
     /**
      * Tag for backup identification.

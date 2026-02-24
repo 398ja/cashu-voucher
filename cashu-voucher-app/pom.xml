@@ -89,7 +89,7 @@
         <!-- Nostr Schnorr signatures (secp256k1) - for test key generation -->
         <dependency>
             <groupId>xyz.tcheeric</groupId>
-            <artifactId>nostr-java-crypto</artifactId>
+            <artifactId>nostr-java-core</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
