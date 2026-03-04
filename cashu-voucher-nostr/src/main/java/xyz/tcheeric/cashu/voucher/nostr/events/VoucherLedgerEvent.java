@@ -101,6 +101,50 @@ public class VoucherLedgerEvent extends GenericEvent {
      * @throws VoucherNostrException if serialization fails
      */
     public static VoucherLedgerEvent fromVoucher(SignedVoucher voucher, VoucherStatus status) {
+        return fromVoucher(voucher, status, false);
+    }
+
+    /**
+     * Creates a VoucherLedgerEvent from a domain voucher, status, and split flag.
+     *
+     * @param voucher the signed voucher (must not be null)
+     * @param status the voucher status (must not be null)
+     * @param isSplit true if this voucher resulted from a split operation
+     * @return VoucherLedgerEvent ready for publishing
+     * @throws VoucherNostrException if serialization fails
+     */
+    /**
+     * Creates a VoucherLedgerEvent from a domain voucher, status, split flag, and parent voucher ID.
+     *
+     * @param voucher the signed voucher (must not be null)
+     * @param status the voucher status (must not be null)
+     * @param isSplit true if this voucher resulted from a split/partial operation
+     * @param parentVoucherId the parent voucher ID (null for root vouchers)
+     * @return VoucherLedgerEvent ready for publishing
+     * @throws VoucherNostrException if serialization fails
+     */
+    public static VoucherLedgerEvent fromVoucher(SignedVoucher voucher, VoucherStatus status,
+                                                  boolean isSplit, String parentVoucherId) {
+        VoucherLedgerEvent event = fromVoucherInternal(voucher, status, isSplit);
+        if (parentVoucherId != null && !parentVoucherId.isBlank()) {
+            VoucherEventPayloadMapper.VoucherPayload payload;
+            try {
+                VoucherContent content = objectMapper.readValue(event.getContent(), VoucherContent.class);
+                content.getVoucher().setParentVoucherId(parentVoucherId);
+                event.setContent(objectMapper.writeValueAsString(content));
+            } catch (Exception e) {
+                log.warn("Failed to set parentVoucherId in content: {}", e.getMessage());
+            }
+            event.addTag(BaseTag.create("parent", parentVoucherId));
+        }
+        return event;
+    }
+
+    public static VoucherLedgerEvent fromVoucher(SignedVoucher voucher, VoucherStatus status, boolean isSplit) {
+        return fromVoucherInternal(voucher, status, isSplit);
+    }
+
+    private static VoucherLedgerEvent fromVoucherInternal(SignedVoucher voucher, VoucherStatus status, boolean isSplit) {
         if (voucher == null) {
             throw new IllegalArgumentException("Voucher cannot be null");
         }
@@ -109,6 +153,9 @@ public class VoucherLedgerEvent extends GenericEvent {
         }
 
         VoucherEventPayloadMapper.VoucherPayload voucherPayload = VoucherEventPayloadMapper.toPayload(voucher);
+        if (isSplit) {
+            voucherPayload.setIsSplit(true);
+        }
         String voucherId = voucherPayload.getVoucherId();
 
         log.debug("Creating VoucherLedgerEvent: voucherId={}, status={}", voucherId, status);
@@ -127,6 +174,11 @@ public class VoucherLedgerEvent extends GenericEvent {
 
         if (voucherPayload.getExpiresAt() != null) {
             event.addTag(BaseTag.create(TAG_EXPIRY, String.valueOf(voucherPayload.getExpiresAt())));
+        }
+
+        // Add 'p' tag with issuerId (merchant pubkey) to enable relay-level filtering
+        if (voucherPayload.getIssuerId() != null && !voucherPayload.getIssuerId().isBlank()) {
+            event.addTag(BaseTag.create("p", voucherPayload.getIssuerId()));
         }
 
         // Serialize voucher to JSON content
