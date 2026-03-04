@@ -73,6 +73,10 @@ public interface VoucherLedgerPort {
     /**
      * Publishes a voucher to the public ledger with the given status and split flag.
      *
+     * <p>The default implementation delegates to {@link #publish(SignedVoucher, VoucherStatus)},
+     * which means the {@code isSplit} flag is ignored unless the adapter overrides this method.
+     * Adapters that support split metadata (e.g., the Nostr adapter) should override this method.
+     *
      * @param voucher the signed voucher to publish (must not be null)
      * @param status the status (must not be null)
      * @param isSplit true if this voucher resulted from a split operation
@@ -83,6 +87,10 @@ public interface VoucherLedgerPort {
 
     /**
      * Publishes a voucher to the public ledger with the given status, split flag, and parent voucher ID.
+     *
+     * <p>The default implementation delegates to {@link #publish(SignedVoucher, VoucherStatus, boolean)},
+     * which means the {@code parentVoucherId} is ignored unless the adapter overrides this method.
+     * Adapters that support parent linkage (e.g., the Nostr adapter) should override this method.
      *
      * @param voucher the signed voucher to publish (must not be null)
      * @param status the status (must not be null)

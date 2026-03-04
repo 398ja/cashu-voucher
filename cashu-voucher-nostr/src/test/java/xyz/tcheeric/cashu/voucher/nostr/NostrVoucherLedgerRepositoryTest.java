@@ -161,6 +161,39 @@ class NostrVoucherLedgerRepositoryTest {
                 repository.publish(voucher, null);
             });
         }
+
+        @Test
+        @DisplayName("Should invoke 3-arg publish with isSplit flag")
+        void shouldInvokeThreeArgPublish() {
+            SignedVoucher voucher = createTestVoucher("voucher-split");
+
+            // Will fail because client isn't connected, but verifies the overload is callable
+            assertThrows(VoucherNostrException.class, () -> {
+                repository.publish(voucher, VoucherStatus.ISSUED, true);
+            });
+        }
+
+        @Test
+        @DisplayName("Should invoke 4-arg publish with isSplit and parentVoucherId")
+        void shouldInvokeFourArgPublish() {
+            SignedVoucher voucher = createTestVoucher("voucher-child");
+
+            // Will fail because client isn't connected, but verifies the overload is callable
+            assertThrows(VoucherNostrException.class, () -> {
+                repository.publish(voucher, VoucherStatus.ISSUED, true, "parent-123");
+            });
+        }
+
+        @Test
+        @DisplayName("Should invoke 4-arg publish with null parentVoucherId")
+        void shouldInvokeFourArgPublishWithNullParent() {
+            SignedVoucher voucher = createTestVoucher("voucher-root");
+
+            // Will fail because client isn't connected, but verifies null parent is accepted
+            assertThrows(VoucherNostrException.class, () -> {
+                repository.publish(voucher, VoucherStatus.ISSUED, false, null);
+            });
+        }
     }
 
     @Nested

@@ -160,6 +160,11 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
     }
 
     @Override
+    public void publish(@NonNull SignedVoucher voucher, @NonNull VoucherStatus status, boolean isSplit) {
+        publish(voucher, status, isSplit, null);
+    }
+
+    @Override
     public void publish(@NonNull SignedVoucher voucher, @NonNull VoucherStatus status,
                         boolean isSplit, String parentVoucherId) {
         String voucherId = voucher.getSecret().getVoucherId() != null
@@ -174,40 +179,10 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
                     : VoucherLedgerEvent.fromVoucher(voucher, status, isSplit);
             event.setPubKey(issuerPublicKey);
 
-            boolean success = nostrClient.publishEvent(event, publishTimeoutMs);
-
-            if (!success) {
-                throw new VoucherNostrException(
-                        "Failed to publish voucher to any relay: voucherId=" + voucherId);
-            }
-
-            log.info("Successfully published voucher: voucherId={}, eventId={}", voucherId, event.getId());
-
-        } catch (VoucherNostrException e) {
-            log.error("Failed to publish voucher: voucherId={}", voucherId, e);
-            throw e;
-        } catch (Exception e) {
-            log.error("Unexpected error publishing voucher: voucherId={}", voucherId, e);
-            throw new VoucherNostrException("Failed to publish voucher", e);
-        }
-    }
-
-    @Override
-    public void publish(@NonNull SignedVoucher voucher, @NonNull VoucherStatus status, boolean isSplit) {
-        String voucherId = voucher.getSecret().getVoucherId() != null
-                ? voucher.getSecret().getVoucherId().toString() : null;
-        log.info("Publishing voucher to ledger: voucherId={}, status={}, isSplit={}", voucherId, status, isSplit);
-
-        try {
-            // Create NIP-33 event
-            VoucherLedgerEvent event = VoucherLedgerEvent.fromVoucher(voucher, status, isSplit);
-            event.setPubKey(issuerPublicKey);
-
             // TODO: Sign event with issuer's private key
             // This will be implemented when we add key management
             // For now, the event is published unsigned (will fail on real relays)
 
-            // Publish to relays
             boolean success = nostrClient.publishEvent(event, publishTimeoutMs);
 
             if (!success) {
