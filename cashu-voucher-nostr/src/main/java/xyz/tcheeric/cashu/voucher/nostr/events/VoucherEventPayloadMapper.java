@@ -163,6 +163,12 @@ final class VoucherEventPayloadMapper {
 
         @JsonProperty("issuerPublicKey")
         private String issuerPublicKey;
+
+        @JsonProperty("isSplit")
+        private Boolean isSplit;
+
+        @JsonProperty("parentVoucherId")
+        private String parentVoucherId;
     }
 }
 

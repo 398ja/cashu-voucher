@@ -1,6 +1,10 @@
 package xyz.tcheeric.cashu.voucher.nostr.events;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import nostr.event.BaseTag;
 import nostr.event.impl.GenericEvent;
+import nostr.event.tag.GenericTag;
 import org.junit.jupiter.api.*;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
@@ -8,6 +12,8 @@ import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 import xyz.tcheeric.cashu.voucher.nostr.VoucherNostrException;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -294,6 +300,109 @@ class VoucherLedgerEventTest {
             event.setKind(1);
 
             assertFalse(event.isValid());
+        }
+    }
+
+    @Nested
+    @DisplayName("Split/Parent Voucher Tests")
+    class SplitParentTests {
+
+        private static final ObjectMapper objectMapper = new ObjectMapper();
+
+        @Test
+        @DisplayName("Should set isSplit flag in event content")
+        void shouldSetIsSplitFlagInContent() throws Exception {
+            SignedVoucher voucher = createTestVoucher("voucher-split");
+
+            VoucherLedgerEvent event = VoucherLedgerEvent.fromVoucher(voucher, VoucherStatus.ISSUED, true);
+
+            JsonNode content = objectMapper.readTree(event.getContent());
+            assertTrue(content.get("voucher").get("isSplit").asBoolean());
+        }
+
+        @Test
+        @DisplayName("Should not set isSplit when false")
+        void shouldNotSetIsSplitWhenFalse() throws Exception {
+            SignedVoucher voucher = createTestVoucher("voucher-nosplit");
+
+            VoucherLedgerEvent event = VoucherLedgerEvent.fromVoucher(voucher, VoucherStatus.ISSUED, false);
+
+            JsonNode content = objectMapper.readTree(event.getContent());
+            assertTrue(content.get("voucher").get("isSplit") == null
+                    || !content.get("voucher").get("isSplit").asBoolean());
+        }
+
+        @Test
+        @DisplayName("Should set parentVoucherId in content and add parent tag")
+        void shouldSetParentVoucherIdInContentAndTag() throws Exception {
+            SignedVoucher voucher = createTestVoucher("voucher-child");
+            String parentId = "parent-voucher-123";
+
+            VoucherLedgerEvent event = VoucherLedgerEvent.fromVoucher(
+                    voucher, VoucherStatus.ISSUED, true, parentId);
+
+            // Verify content
+            JsonNode content = objectMapper.readTree(event.getContent());
+            assertEquals(parentId, content.get("voucher").get("parentVoucherId").asText());
+
+            // Verify parent tag
+            String parentTagValue = getTagValue(event, "parent");
+            assertEquals(parentId, parentTagValue);
+        }
+
+        @Test
+        @DisplayName("Should not add parent tag when parentVoucherId is null")
+        void shouldNotAddParentTagWhenNull() {
+            SignedVoucher voucher = createTestVoucher("voucher-root");
+
+            VoucherLedgerEvent event = VoucherLedgerEvent.fromVoucher(
+                    voucher, VoucherStatus.ISSUED, false, null);
+
+            String parentTagValue = getTagValue(event, "parent");
+            assertNull(parentTagValue);
+        }
+
+        @Test
+        @DisplayName("Should add p tag with issuer public key")
+        void shouldAddPTagWithIssuerPublicKey() {
+            SignedVoucher voucher = createTestVoucher("voucher-ptag");
+
+            VoucherLedgerEvent event = VoucherLedgerEvent.fromVoucher(voucher, VoucherStatus.ISSUED);
+
+            String pTagValue = getTagValue(event, "p");
+            assertEquals(TEST_ISSUER_PUBKEY, pTagValue);
+        }
+
+        @Test
+        @DisplayName("Should preserve isSplit through round-trip")
+        void shouldPreserveIsSplitThroughRoundTrip() throws Exception {
+            SignedVoucher voucher = createTestVoucher("voucher-split-rt");
+
+            VoucherLedgerEvent event = VoucherLedgerEvent.fromVoucher(voucher, VoucherStatus.ISSUED, true);
+
+            // Verify content has isSplit
+            JsonNode content = objectMapper.readTree(event.getContent());
+            assertTrue(content.get("voucher").get("isSplit").asBoolean());
+
+            // Verify toVoucher still works
+            SignedVoucher restored = event.toVoucher();
+            assertNotNull(restored);
+            assertEquals(voucher.getSecret().getVoucherId(), restored.getSecret().getVoucherId());
+        }
+
+        private String getTagValue(VoucherLedgerEvent event, String tagName) {
+            List<BaseTag> tags = event.getTags();
+            if (tags == null) return null;
+            for (BaseTag tag : tags) {
+                if (tag.getCode() != null && tag.getCode().equals(tagName)
+                        && tag instanceof GenericTag genericTag) {
+                    List<String> params = genericTag.getParams();
+                    if (params != null && !params.isEmpty()) {
+                        return params.get(0);
+                    }
+                }
+            }
+            return null;
         }
     }
 

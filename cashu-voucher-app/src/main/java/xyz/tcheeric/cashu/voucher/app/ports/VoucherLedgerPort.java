@@ -71,6 +71,37 @@ public interface VoucherLedgerPort {
     void publish(SignedVoucher voucher, VoucherStatus status);
 
     /**
+     * Publishes a voucher to the public ledger with the given status and split flag.
+     *
+     * <p>The default implementation delegates to {@link #publish(SignedVoucher, VoucherStatus)},
+     * which means the {@code isSplit} flag is ignored unless the adapter overrides this method.
+     * Adapters that support split metadata (e.g., the Nostr adapter) should override this method.
+     *
+     * @param voucher the signed voucher to publish (must not be null)
+     * @param status the status (must not be null)
+     * @param isSplit true if this voucher resulted from a split operation
+     */
+    default void publish(SignedVoucher voucher, VoucherStatus status, boolean isSplit) {
+        publish(voucher, status);
+    }
+
+    /**
+     * Publishes a voucher to the public ledger with the given status, split flag, and parent voucher ID.
+     *
+     * <p>The default implementation delegates to {@link #publish(SignedVoucher, VoucherStatus, boolean)},
+     * which means the {@code parentVoucherId} is ignored unless the adapter overrides this method.
+     * Adapters that support parent linkage (e.g., the Nostr adapter) should override this method.
+     *
+     * @param voucher the signed voucher to publish (must not be null)
+     * @param status the status (must not be null)
+     * @param isSplit true if this voucher resulted from a split/partial operation
+     * @param parentVoucherId the parent voucher ID for partial redemptions (null for root vouchers)
+     */
+    default void publish(SignedVoucher voucher, VoucherStatus status, boolean isSplit, String parentVoucherId) {
+        publish(voucher, status, isSplit);
+    }
+
+    /**
      * Queries the current status of a voucher from the ledger.
      *
      * <p>Returns the most recent status of the voucher as recorded in the ledger.
