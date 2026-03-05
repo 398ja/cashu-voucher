@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.0] - 2026-03-04
+
+### Added
+
+- **Split/partial redemption support in VoucherLedgerPort** (`cashu-voucher-app`)
+  - `publish(SignedVoucher, VoucherStatus, boolean isSplit)` overload for split flag
+  - `publish(SignedVoucher, VoucherStatus, boolean isSplit, String parentVoucherId)` overload for parent tracking
+  - Default method implementations for backward compatibility
+
+- **Split/partial redemption in Nostr ledger** (`cashu-voucher-nostr`)
+  - `NostrVoucherLedgerRepository` implements all new `publish` overloads
+  - `isSplit` and `parentVoucherId` fields in `VoucherEventPayloadMapper.VoucherPayload`
+  - `VoucherLedgerEvent.fromVoucher()` overloads with split flag and parent voucher ID
+  - `parent` tag on ledger events for linking split vouchers to their parent
+  - `p` tag with issuer ID (merchant pubkey) for relay-level filtering
+
+---
+
 ## [0.7.0] - 2026-02-24
 
 ### Changed
@@ -690,7 +708,8 @@ This is the initial release. No migration needed.
 
 ---
 
-[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.7.0...HEAD
+[Unreleased]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.8.0...HEAD
+[0.8.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.7.0...cashu-voucher-v0.8.0
 [0.7.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.6.1...cashu-voucher-v0.7.0
 [0.6.1]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.6.0...cashu-voucher-v0.6.1
 [0.6.0]: https://github.com/yourusername/cashu-voucher/compare/cashu-voucher-v0.5.0...cashu-voucher-v0.6.0
