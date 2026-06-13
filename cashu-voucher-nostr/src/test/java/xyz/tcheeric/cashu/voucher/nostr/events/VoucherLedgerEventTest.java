@@ -374,6 +374,20 @@ class VoucherLedgerEventTest {
         }
 
         @Test
+        @DisplayName("Should add a p tag with the merchant issuerId for relay filtering")
+        void shouldAddPTagWithMerchantIssuerId() {
+            SignedVoucher voucher = createTestVoucher("voucher-merchant-ptag");
+
+            VoucherLedgerEvent event = VoucherLedgerEvent.fromVoucher(voucher, VoucherStatus.ISSUED);
+
+            // Both the publishing-wallet key AND the merchant issuerId must be present as
+            // p tags so the merchant dashboard can filter the relay by merchant (#p==issuerId).
+            List<String> pTags = getAllTagValues(event, "p");
+            assertTrue(pTags.contains(ISSUER_ID), "expected merchant issuerId p tag, got: " + pTags);
+            assertTrue(pTags.contains(TEST_ISSUER_PUBKEY), "expected issuerPublicKey p tag, got: " + pTags);
+        }
+
+        @Test
         @DisplayName("Should preserve isSplit through round-trip")
         void shouldPreserveIsSplitThroughRoundTrip() throws Exception {
             SignedVoucher voucher = createTestVoucher("voucher-split-rt");
@@ -403,6 +417,22 @@ class VoucherLedgerEventTest {
                 }
             }
             return null;
+        }
+
+        private List<String> getAllTagValues(VoucherLedgerEvent event, String tagName) {
+            List<String> values = new java.util.ArrayList<>();
+            List<BaseTag> tags = event.getTags();
+            if (tags == null) return values;
+            for (BaseTag tag : tags) {
+                if (tag.getCode() != null && tag.getCode().equals(tagName)
+                        && tag instanceof GenericTag genericTag) {
+                    List<String> params = genericTag.getParams();
+                    if (params != null && !params.isEmpty()) {
+                        values.add(params.get(0));
+                    }
+                }
+            }
+            return values;
         }
     }
 

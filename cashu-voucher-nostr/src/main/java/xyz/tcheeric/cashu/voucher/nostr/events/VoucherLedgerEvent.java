@@ -173,6 +173,18 @@ public class VoucherLedgerEvent extends GenericEvent {
             event.addTag(BaseTag.create("p", voucherPayload.getIssuerPublicKey()));
         }
 
+        // Add a 'p' tag with the voucher's issuer (merchant) id so consumers — e.g. the
+        // merchant dashboard — can filter the relay by merchant. This is distinct from the
+        // publishing-wallet key above: for gateway-minted vouchers (e.g. cash payments) the
+        // signing/publishing key differs from the nominal merchant issuerId, so without this
+        // tag the merchant's own vouchers are not relay-queryable. Skipped when it would
+        // duplicate the issuerPublicKey tag (self-issued vouchers).
+        String issuerId = voucherPayload.getIssuerId();
+        if (issuerId != null && !issuerId.isBlank()
+                && !issuerId.equals(voucherPayload.getIssuerPublicKey())) {
+            event.addTag(BaseTag.create("p", issuerId));
+        }
+
         // Add 'parent' tag for split vouchers linked to a parent
         if (parentVoucherId != null && !parentVoucherId.isBlank()) {
             event.addTag(BaseTag.create("parent", parentVoucherId));
