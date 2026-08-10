@@ -132,7 +132,7 @@ two real callers rather than one imagined.
 | `auxiliaryFields[expires]` | `secret.getExpiresAt()` | `dateStyle: PKDateStyleMedium` |
 | `backFields` | voucher id, issuer id, `issuer_pubkey`, terms | See below |
 | `barcodes[0]` | `"voucher:" + secret.getVoucherId()` | See barcode rules |
-| `userInfo` | `{"voucherId": "<uuid>"}` | Links the card to proofs the wallet already holds |
+| `userInfo` | `voucherId`, plus `logoUrl` / `stripUrl` from branding | Links the card to proofs the wallet holds; see Images |
 
 `backFields` carries, in order: `voucherId`, `issuer` (issuer id), `issuerKey`
 (`issuer_pubkey`, full hex), and `terms` — a fixed string stating the Model B
@@ -222,6 +222,46 @@ to fail rendering — the voucher is valid without it.
 
 URLs are carried through for the renderer to fetch. The mapper performs no I/O, and
 `cashu-voucher-pass` gains no Nostr dependency: resolution is entirely the caller's.
+
+### Images
+
+`pass.json` has **no image fields**. In Apple's model images are files inside the
+`.pkpass` bundle (`logo.png`, `strip.png`, `icon.png`, plus `@2x`/`@3x`), referenced by
+filename convention rather than by any key in the JSON. Since we emit `pass.json` only
+(D6, and no `.pkpass` container), there is nowhere in the schema for a URL.
+
+Image URLs therefore go in **`userInfo`**, the app-private dictionary — legal in the
+schema, ignored by any standard reader, and read by our own renderer:
+
+```json
+"userInfo": {
+  "voucherId": "<uuid>",
+  "logoUrl":   "<kind-0 picture>",
+  "stripUrl":  "<kind-0 banner>"
+}
+```
+
+Slot mapping, and where it fits badly:
+
+| Source | Apple slot | Allotted space | Fit |
+|---|---|---|---|
+| kind-0 `picture` | `logo` — upper left | ≤160×50 pt, height fixed, width flexible | Square avatar into a wide, short slot; the renderer must letterbox rather than stretch |
+| kind-0 `banner` | `strip` — behind the primary fields | 375×123 pt for a storeCard | Good aspect match |
+
+Two constraints that follow, both of which bite on a device rather than in review:
+
+- **The strip sits behind the primary fields**, and our primary field is the balance. A
+  busy banner makes `€50.00` unreadable. The renderer must apply a scrim over the strip,
+  or omit the strip entirely when contrast can't be guaranteed. Colour alone won't save
+  it, because `foregroundColor` has no source yet either.
+- **A strip excludes `background` and `thumbnail`.** Apple's guidance is that a pass
+  specifying a strip image uses neither. We want neither, so this costs nothing — but it
+  means banner-as-strip is a commitment, not one option among three.
+
+Dimensions above are **advisory for us**. We produce no bundle and Apple Wallet never
+renders these passes, so our renderer owns layout; the figures are recorded to keep the
+design recognisable to anyone who knows the format, not as validation rules. Do not
+enforce them in the mapper.
 
 ## Barcode
 
@@ -328,6 +368,8 @@ Unit tests only — the mapper is a pure function with no I/O to stub.
 7. **Voided** — `REDEEMED` and `REVOKED` set `voided: true`; `ISSUED` does not.
 8. **Barcode** — `message` is `voucher:` + the UUID, `altText` is the bare UUID
    without the prefix, and exactly one entry is emitted under `barcodes`.
+9. **Image URLs** — `logoUrl` and `stripUrl` appear in `userInfo` when branding
+   supplies them, and are absent (not null) when it does not.
 
 ## Assumptions to confirm
 
