@@ -23,7 +23,7 @@ A side benefit: because we control the model, `expirationDate` is an ISO-8601 `S
 ## Global Constraints
 
 - Java 21; parent POM `xyz.tcheeric:cashu-voucher:0.8.0` manages all dependency versions — child POMs declare no `<version>` on dependencies.
-- **The module's only non-test dependencies are `cashu-voucher-domain`, Jackson annotations, and slf4j.** Never add jPasskit, Nostr, HTTP, or filesystem dependencies.
+- **Never add jPasskit, a Nostr client or relay library, HTTP, or filesystem dependencies to this module.** Declare what the code actually compiles against — including anything reachable from the public signature — and nothing more. (This constraint originally froze an exhaustive three-artifact allowlist before the imports were written, which left `cashu-lib-common` undeclared despite `VoucherSecret` appearing in `toPass`'s signature. Prohibitions, not allowlists.)
 - Money is `BigDecimal` built with `BigDecimal.valueOf(long, int)`. `double` must never appear on the money path.
 - The mapper performs no I/O. Image URLs are passed through as strings.
 - Tests use JUnit 5 + AssertJ with `@DisplayName`, matching `cashu-voucher-domain` conventions. Test classes are package-private.

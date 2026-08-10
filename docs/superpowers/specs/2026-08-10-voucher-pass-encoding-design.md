@@ -64,22 +64,33 @@ mapper directly. A port here would be ceremony over a single implementation with
 nothing to abstract. If an app service later needs rendering, adding the port is
 trivial and non-breaking.
 
-**D4 — Use jPasskit (`de.brendamour:jpasskit:0.5.7`, Apache-2.0) as the object model
-and serializer only.**
-`PKPass` is a POJO tree that Jackson serializes to `pass.json`. The signing classes
-(`PKFileBasedSigningUtil`, `PKSigningInformationUtil`) and template classes
-(`PKPassTemplateFolder`, `PKPassTemplateInMemory`) are cleanly separate and must not be
-imported. jPasskit's transitive dependencies are Jackson and Bouncy Castle, both
-already managed in the parent POM.
+**D4 — Model `pass.json` with hand-rolled Jackson-annotated records.** *(Amended
+during implementation — see below.)*
 
-*Fallback:* if the transitive tree proves unacceptable at implementation time, replace
-with ~12 Jackson-annotated records. The mapper's public signature does not change.
+This decision originally chose jPasskit (`de.brendamour:jpasskit:0.5.7`) as the object
+model, with a stated fallback to hand-rolled records if its transitive tree proved
+unacceptable. The tree was measured at implementation time and the fallback was taken.
+
+jPasskit 0.5.7 pulls roughly 25 transitive artifacts, including **`com.eatthepath:pushy`
+— an APNs push client — and twelve Netty artifacts**, plus Guava, commons-codec/io/lang3,
+`bcpkix`/`bcutil` 1.84 against the parent's pinned `bcprov` 1.78, and
+`jackson-datatype-jsr310` 2.21.3 skewed against the managed Jackson 2.17.0. Pulling an
+APNs client and Netty into a module whose non-goals explicitly rule out the pass update
+web service is exactly what the fallback existed for.
+
+The replacement is a four-record tree (`PassJson`, and nested `StoreCard`, `Field`,
+`Barcode`) carrying `@JsonInclude(NON_NULL)`, adding no dependency beyond Jackson
+annotations. A side benefit: because we own the model, `expirationDate` is an ISO-8601
+`String` rather than an `Instant`, so no Jackson java-time module is needed anywhere.
 
 **D5 — Fiat only.** Sat-denominated vouchers are out of scope. This is what makes
 `currencyCode` usable directly and removes the need for `numberStyle` fallbacks.
 
-**D6 — Output is a `PKPass` object.** Serialization is the caller's `ObjectMapper`
-one-liner. No wrapper class, no file writing, no `String`-returning convenience method.
+**D6 — Output is a `PassJson` record.** *(Amended with D4 — was `PKPass`.)*
+Serialization is the caller's `ObjectMapper` one-liner. No wrapper class, no file
+writing, no `String`-returning convenience method. Callers rendering money should enable
+`WRITE_BIGDECIMAL_AS_PLAIN`; at fiat scales (0–3 fraction digits) `BigDecimal.toString()`
+is already plain, so this is belt-and-braces rather than a fix.
 
 ## Module layout
 
