@@ -320,6 +320,7 @@ class VoucherPassMapperTest {
         assertThat(json.path("description").asText()).isEqualTo("Gift card");
         assertThat(json.path("backgroundColor").asText()).isEqualTo("rgb(10,20,30)");
         assertThat(json.path("expirationDate").asText()).isEqualTo("2030-01-01T00:00:00Z");
+        assertThat(json.has("voided")).isTrue();
         assertThat(json.path("voided").asBoolean()).isFalse();
 
         JsonNode balance = json.path("storeCard").path("primaryFields").get(0);
