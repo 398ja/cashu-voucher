@@ -26,6 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     previously had to scan a bounded global window and filter by content, which silently
     drops events as volume grows
 
+- **`VoucherGoldenVectorTest`** (`cashu-voucher-domain`)
+  - Deterministic, byte-for-byte golden vector for cross-implementation verification of
+    VOUCHER issuer signatures, consumed by the TypeScript offline wallet
+    (`imani-apps/packages/offline-wallet`)
+  - Fixed voucherId, nonce, tag set and issuer keypair, so the vector is fully reproducible;
+    emits the NUT-10 secret string, the canonical signing bytes, their SHA-256, the BIP-340
+    Schnorr signature and the issuer's x-only public key
+  - Includes a tampered negative fixture — `face_value` altered after signing with the
+    signature left untouched — which must fail verification
+  - Asserts that its local replication of the private `getCanonicalBytesForSigning` still
+    matches the authoritative signature, so a change to the canonical form fails here rather
+    than silently desynchronising the Java and TypeScript implementations
+
 ### Changed
 
 - Updated cashu-lib to 0.21.0 (NUT-11 P2PK secret validation). Validation is fail-closed:
