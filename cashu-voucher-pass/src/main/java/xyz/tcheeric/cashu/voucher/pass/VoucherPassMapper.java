@@ -10,8 +10,10 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Currency;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -42,6 +44,9 @@ public final class VoucherPassMapper {
             "Redeemable only with the issuing merchant. Not redeemable at the mint.";
 
     static final String DATE_STYLE_MEDIUM = "PKDateStyleMedium";
+
+    static final String DEFAULT_BACKGROUND_COLOR = "rgb(20,20,20)";
+    static final String DEFAULT_FOREGROUND_COLOR = "rgb(255,255,255)";
 
     private VoucherPassMapper() {
     }
@@ -87,15 +92,15 @@ public final class VoucherPassMapper {
                 String.valueOf(secret.getVoucherId()),
                 description(secret, b),
                 organizationName(secret, b),
-                null,
-                null,
-                null,
-                null,
+                b.organizationName(),
+                orDefault(b.backgroundColor(), DEFAULT_BACKGROUND_COLOR),
+                orDefault(b.foregroundColor(), DEFAULT_FOREGROUND_COLOR),
+                orDefault(b.foregroundColor(), DEFAULT_FOREGROUND_COLOR),
                 expirationDate,
                 isVoided(status),
                 storeCard,
                 null,
-                null);
+                userInfo(secret, b));
     }
 
     /** Epoch seconds to an ISO-8601 instant, or null when the voucher never expires. */
@@ -131,6 +136,32 @@ public final class VoucherPassMapper {
 
     private static String organizationName(VoucherSecret secret, MerchantBranding b) {
         return isPresent(b.organizationName()) ? b.organizationName() : secret.getIssuerId();
+    }
+
+    private static String orDefault(String value, String fallback) {
+        return isPresent(value) ? value : fallback;
+    }
+
+    /**
+     * The app-private dictionary our renderer reads.
+     *
+     * <p>{@code pass.json} has no image fields — Apple carries images as files inside
+     * the {@code .pkpass} bundle, referenced by filename convention. We emit JSON only,
+     * so branding URLs live here. Absent URLs are omitted rather than stored as nulls.
+     *
+     * <p>{@code voucherId} links the card to whichever proofs the wallet already holds.
+     * No bearer secret is ever placed in a pass.
+     */
+    private static Map<String, Object> userInfo(VoucherSecret secret, MerchantBranding b) {
+        Map<String, Object> userInfo = new LinkedHashMap<>();
+        userInfo.put("voucherId", String.valueOf(secret.getVoucherId()));
+        if (isPresent(b.logoUrl())) {
+            userInfo.put("logoUrl", b.logoUrl());
+        }
+        if (isPresent(b.bannerUrl())) {
+            userInfo.put("stripUrl", b.bannerUrl());
+        }
+        return Map.copyOf(userInfo);
     }
 
     /**

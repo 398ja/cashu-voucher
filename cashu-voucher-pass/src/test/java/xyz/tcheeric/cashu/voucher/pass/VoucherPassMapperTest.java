@@ -12,6 +12,7 @@ import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,6 +27,14 @@ class VoucherPassMapperTest {
 
     static final String ISSUER_ID = "corner-cafe";
     static final String VOUCHER_ID = "11111111-2222-3333-4444-555555555555";
+
+    static final MerchantBranding FULL_BRANDING = new MerchantBranding(
+            "Corner Cafe",
+            "https://blossom.example/logo.png",
+            "https://blossom.example/banner.png",
+            "Best coffee in town",
+            "rgb(10,20,30)",
+            "rgb(240,240,240)");
 
     @BeforeAll
     static void setupKeys() {
@@ -219,5 +228,62 @@ class VoucherPassMapperTest {
     void defaultsToNotVoided() {
         assertThat(VoucherPassMapper.toPass(voucher("eur", 5000L, 2, null, "Gift card"),
                 MerchantBranding.empty()).voided()).isFalse();
+    }
+
+    @Test
+    @DisplayName("applies merchant branding")
+    void appliesBranding() {
+        PassJson pass = VoucherPassMapper.toPass(
+                voucher("eur", 5000L, 2, null, "Gift card"), FULL_BRANDING);
+
+        assertThat(pass.organizationName()).isEqualTo("Corner Cafe");
+        assertThat(pass.logoText()).isEqualTo("Corner Cafe");
+        assertThat(pass.backgroundColor()).isEqualTo("rgb(10,20,30)");
+        assertThat(pass.foregroundColor()).isEqualTo("rgb(240,240,240)");
+        assertThat(pass.labelColor()).isEqualTo("rgb(240,240,240)");
+    }
+
+    @Test
+    @DisplayName("puts image URLs in userInfo alongside the voucher id")
+    void putsImageUrlsInUserInfo() {
+        Map<String, Object> userInfo = VoucherPassMapper.toPass(
+                voucher("eur", 5000L, 2, null, "Gift card"), FULL_BRANDING).userInfo();
+
+        assertThat(userInfo)
+                .containsEntry("voucherId", VOUCHER_ID)
+                .containsEntry("logoUrl", "https://blossom.example/logo.png")
+                .containsEntry("stripUrl", "https://blossom.example/banner.png");
+    }
+
+    @Test
+    @DisplayName("omits absent image URLs rather than storing nulls")
+    void omitsAbsentImageUrls() {
+        Map<String, Object> userInfo = VoucherPassMapper.toPass(
+                voucher("eur", 5000L, 2, null, "Gift card"), MerchantBranding.empty()).userInfo();
+
+        assertThat(userInfo).containsOnlyKeys("voucherId");
+    }
+
+    @Test
+    @DisplayName("falls back to defaults for null and empty branding")
+    void fallsBackForMissingBranding() {
+        SignedVoucher v = voucher("eur", 5000L, 2, null, null);
+
+        for (MerchantBranding branding : new MerchantBranding[]{null, MerchantBranding.empty()}) {
+            PassJson pass = VoucherPassMapper.toPass(v, branding);
+
+            assertThat(pass.organizationName()).isEqualTo(ISSUER_ID);
+            assertThat(pass.description()).isEqualTo("Gift Card");
+            assertThat(pass.backgroundColor()).isEqualTo("rgb(20,20,20)");
+            assertThat(pass.foregroundColor()).isEqualTo("rgb(255,255,255)");
+            assertThat(pass.logoText()).isNull();
+        }
+    }
+
+    @Test
+    @DisplayName("uses storeDescription when the voucher has no memo")
+    void usesStoreDescriptionWhenNoMemo() {
+        assertThat(VoucherPassMapper.toPass(voucher("eur", 5000L, 2, null, null), FULL_BRANDING)
+                .description()).isEqualTo("Best coffee in town");
     }
 }
