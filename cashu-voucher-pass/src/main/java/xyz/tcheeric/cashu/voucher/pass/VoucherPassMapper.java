@@ -10,12 +10,14 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.Currency;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Maps a {@link SignedVoucher} to a {@link PassJson} document.
@@ -87,18 +89,19 @@ public final class VoucherPassMapper {
         Objects.requireNonNull(voucher, "voucher");
         MerchantBranding b = branding != null ? branding : MerchantBranding.empty();
         VoucherSecret secret = voucher.getSecret();
+        String voucherId = voucherId(secret);
         String expirationDate = expirationDate(secret);
 
         PassJson.StoreCard storeCard = new PassJson.StoreCard(
                 List.of(balanceField(secret)),
                 expirationDate == null ? null : List.of(expiryField(expirationDate)),
-                backFields(secret));
+                backFields(secret, voucherId));
 
         return new PassJson(
                 FORMAT_VERSION,
                 PASS_TYPE_IDENTIFIER,
                 TEAM_IDENTIFIER,
-                String.valueOf(secret.getVoucherId()),
+                voucherId,
                 description(secret, b),
                 organizationName(secret, b),
                 b.organizationName(),
@@ -108,8 +111,29 @@ public final class VoucherPassMapper {
                 expirationDate,
                 isVoided(status),
                 storeCard,
-                List.of(barcode(secret)),
-                userInfo(secret, b));
+                List.of(barcode(voucherId)),
+                userInfo(b, voucherId));
+    }
+
+    /**
+     * Validates that the voucher carries a usable voucher id.
+     *
+     * <p>{@link VoucherSecret#getVoucherId()} returns null when the secret's data field
+     * is not a valid UUID; {@code SignedVoucher}'s constructor only checks {@code
+     * isSigned()}, so such a voucher can otherwise reach the mapper and stringify to the
+     * literal {@code "null"} in the serial number, back field, barcode and userInfo.
+     *
+     * <p>Together with {@link #currency}, {@link #faceValue} and the issuer id check in
+     * {@link #organizationName}, this validates the same four identity fields {@code
+     * VoucherValidator} checks: unit, faceValue, voucherId, issuerId. That coupling is
+     * otherwise invisible across modules, hence this note.
+     */
+    private static String voucherId(VoucherSecret secret) {
+        UUID id = secret.getVoucherId();
+        if (id == null) {
+            throw new IllegalArgumentException("Voucher has no valid voucher id");
+        }
+        return id.toString();
     }
 
     /** Epoch seconds to an ISO-8601 instant, or null when the voucher never expires. */
@@ -143,8 +167,23 @@ public final class VoucherPassMapper {
         return DEFAULT_DESCRIPTION;
     }
 
+    /**
+     * Resolves {@code organizationName}, a schema-required top-level key. Branding wins
+     * when present; otherwise falls back to the voucher's issuer id, which {@code
+     * VoucherValidator} also treats as a validation error when absent or blank. Without
+     * this guard, an absent issuer id with no branding would let {@code @JsonInclude(NON_NULL)}
+     * silently drop the key, leaving a pass with no merchant name.
+     */
     private static String organizationName(VoucherSecret secret, MerchantBranding b) {
-        return isPresent(b.organizationName()) ? b.organizationName() : secret.getIssuerId();
+        if (isPresent(b.organizationName())) {
+            return b.organizationName();
+        }
+        String issuerId = secret.getIssuerId();
+        if (!isPresent(issuerId)) {
+            throw new IllegalArgumentException(
+                    "Voucher has no issuer id and branding supplies no organization name");
+        }
+        return issuerId;
     }
 
     private static String orDefault(String value, String fallback) {
@@ -161,16 +200,18 @@ public final class VoucherPassMapper {
      * <p>{@code voucherId} links the card to whichever proofs the wallet already holds.
      * No bearer secret is ever placed in a pass.
      */
-    private static Map<String, Object> userInfo(VoucherSecret secret, MerchantBranding b) {
+    private static Map<String, Object> userInfo(MerchantBranding b, String voucherId) {
         Map<String, Object> userInfo = new LinkedHashMap<>();
-        userInfo.put("voucherId", String.valueOf(secret.getVoucherId()));
+        userInfo.put("voucherId", voucherId);
         if (isPresent(b.logoUrl())) {
             userInfo.put("logoUrl", b.logoUrl());
         }
         if (isPresent(b.bannerUrl())) {
             userInfo.put("stripUrl", b.bannerUrl());
         }
-        return Map.copyOf(userInfo);
+        // Map.copyOf's iteration order is unspecified; unmodifiableMap keeps the
+        // LinkedHashMap's insertion order intact while still being immutable.
+        return Collections.unmodifiableMap(userInfo);
     }
 
     /**
@@ -184,8 +225,7 @@ public final class VoucherPassMapper {
      * <p>{@code altText} is the bare UUID — it exists for a cashier to key in when a
      * scanner fails, so it carries no prefix.
      */
-    private static PassJson.Barcode barcode(VoucherSecret secret) {
-        String voucherId = String.valueOf(secret.getVoucherId());
+    private static PassJson.Barcode barcode(String voucherId) {
         return new PassJson.Barcode(
                 BARCODE_FORMAT_QR,
                 BARCODE_PREFIX + voucherId,
@@ -200,9 +240,9 @@ public final class VoucherPassMapper {
      * invites treatment as a credential. {@code backing_strategy}, {@code issuance_ratio}
      * and {@code merchant_metadata} are excluded too — none has display meaning.
      */
-    private static List<PassJson.Field> backFields(VoucherSecret secret) {
+    private static List<PassJson.Field> backFields(VoucherSecret secret, String voucherId) {
         return List.of(
-                PassJson.Field.of("voucherId", "Voucher ID", String.valueOf(secret.getVoucherId())),
+                PassJson.Field.of("voucherId", "Voucher ID", voucherId),
                 PassJson.Field.of("issuer", "Issuer", secret.getIssuerId()),
                 PassJson.Field.of("issuerKey", "Issuer Public Key", secret.getIssuerPublicKey()),
                 PassJson.Field.of("terms", "Terms", TERMS));

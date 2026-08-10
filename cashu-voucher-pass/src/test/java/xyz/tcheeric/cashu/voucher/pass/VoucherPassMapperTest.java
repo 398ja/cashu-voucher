@@ -13,6 +13,7 @@ import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -186,6 +187,51 @@ class VoucherPassMapperTest {
                 .doesNotThrowAnyException();
     }
 
+    @Test
+    @DisplayName("rejects a voucher with no unit")
+    void rejectsMissingUnit() {
+        assertThatThrownBy(() -> VoucherPassMapper.toPass(
+                voucher(null, 5000L, 2, null, "Gift card"), MerchantBranding.empty()))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("rejects a voucher whose data field is not a valid UUID")
+    void rejectsInvalidVoucherId() {
+        // VoucherSecret.builder() always ends up with a valid UUID (random if none is
+        // given), so there is no way through the builder to produce an invalid data
+        // field. Built directly with setData() instead, per the task's fallback.
+        VoucherSecret secret = new VoucherSecret();
+        secret.setData("not-a-uuid".getBytes(StandardCharsets.UTF_8));
+        secret.setIssuerId(ISSUER_ID);
+        secret.setUnit("eur");
+        secret.setFaceValue(5000L);
+        SignedVoucher v = VoucherSignatureService.createSigned(
+                secret, issuerPrivateKeyHex, issuerPublicKeyHex);
+
+        assertThatThrownBy(() -> VoucherPassMapper.toPass(v, MerchantBranding.empty()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("voucher id");
+    }
+
+    @Test
+    @DisplayName("rejects a voucher with no issuer id and no branding organization name")
+    void rejectsMissingIssuerIdAndBranding() {
+        VoucherSecret secret = VoucherSecret.builder()
+                .voucherId(UUID.randomUUID())
+                .unit("eur")
+                .faceValue(5000L)
+                .faceDecimals(2)
+                .memo("Gift card")
+                .build();
+        SignedVoucher v = VoucherSignatureService.createSigned(
+                secret, issuerPrivateKeyHex, issuerPublicKeyHex);
+
+        assertThatThrownBy(() -> VoucherPassMapper.toPass(v, MerchantBranding.empty()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("issuer");
+    }
+
     private static final long EXPIRES_AT = 1893456000L; // 2030-01-01T00:00:00Z
 
     @Test
@@ -334,6 +380,15 @@ class VoucherPassMapperTest {
         assertThat(expires.has("currencyCode")).isFalse();
 
         assertThat(json.path("storeCard").path("backFields")).hasSize(4);
+
+        // Pins absence, not just presence: a second barcode or a stray top-level key
+        // would go unnoticed by the assertions above alone.
+        assertThat(json.path("barcodes").size()).isEqualTo(1);
+        assertThat((Iterable<String>) json::fieldNames).containsExactlyInAnyOrder(
+                "formatVersion", "passTypeIdentifier", "teamIdentifier", "serialNumber",
+                "description", "organizationName", "logoText", "backgroundColor",
+                "foregroundColor", "labelColor", "expirationDate", "voided",
+                "storeCard", "barcodes", "userInfo");
 
         JsonNode barcode = json.path("barcodes").get(0);
         assertThat(barcode.path("format").asText()).isEqualTo("PKBarcodeFormatQR");
