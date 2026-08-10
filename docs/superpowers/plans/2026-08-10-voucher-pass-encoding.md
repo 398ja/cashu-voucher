@@ -568,12 +568,11 @@ Create `cashu-voucher-pass/src/main/java/xyz/tcheeric/cashu/voucher/pass/Voucher
 ```java
 package xyz.tcheeric.cashu.voucher.pass;
 
-import lombok.NonNull;
-import lombok.extern.slf4j.Slf4j;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Maps a {@link SignedVoucher} to a {@link PassJson} document.
@@ -585,7 +584,6 @@ import java.util.List;
  * <p>Apple Wallet is not a target. We adopt the {@code pass.json} schema only; there
  * is no certificate, no {@code .pkpass} container, and no pass update web service.
  */
-@Slf4j
 public final class VoucherPassMapper {
 
     static final int FORMAT_VERSION = 1;
@@ -611,7 +609,8 @@ public final class VoucherPassMapper {
      * @param branding merchant branding, or null for defaults
      * @return the pass document
      */
-    public static PassJson toPass(@NonNull SignedVoucher voucher, MerchantBranding branding) {
+    public static PassJson toPass(SignedVoucher voucher, MerchantBranding branding) {
+        Objects.requireNonNull(voucher, "voucher");
         MerchantBranding b = branding != null ? branding : MerchantBranding.empty();
         VoucherSecret secret = voucher.getSecret();
 
@@ -776,9 +775,20 @@ Expected: FAIL — `No field with key 'balance'` (primaryFields is null), and th
 In `VoucherPassMapper.java`, add imports:
 
 ```java
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.math.BigDecimal;
 import java.util.Currency;
 import java.util.Locale;
+```
+
+This task is the first to log, so declare the logger as the class's first member.
+**This module has no lombok dependency** — `@Slf4j` is not available here, unlike in
+`cashu-voucher-domain`. Use plain slf4j:
+
+```java
+    private static final Logger log = LoggerFactory.getLogger(VoucherPassMapper.class);
 ```
 
 In `toPass`, replace the `storeCard` construction with:
@@ -972,7 +982,7 @@ Replace the existing `toPass` method with:
      * @param branding merchant branding, or null for defaults
      * @return the pass document
      */
-    public static PassJson toPass(@NonNull SignedVoucher voucher, MerchantBranding branding) {
+    public static PassJson toPass(SignedVoucher voucher, MerchantBranding branding) {
         return toPass(voucher, branding, null);
     }
 
@@ -987,8 +997,9 @@ Replace the existing `toPass` method with:
      * @param status ledger status, or null
      * @return the pass document
      */
-    public static PassJson toPass(@NonNull SignedVoucher voucher, MerchantBranding branding,
+    public static PassJson toPass(SignedVoucher voucher, MerchantBranding branding,
                                   VoucherStatus status) {
+        Objects.requireNonNull(voucher, "voucher");
         MerchantBranding b = branding != null ? branding : MerchantBranding.empty();
         VoucherSecret secret = voucher.getSecret();
         String expirationDate = expirationDate(secret);
