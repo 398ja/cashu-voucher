@@ -99,11 +99,11 @@ One class:
 public final class VoucherPassMapper {
     private VoucherPassMapper() {}
 
-    /** Renders with {@code voided: false}. */
-    public static PKPass toPass(SignedVoucher voucher);
+    /** Renders with {@code voided: false}. {@code branding} may be null. */
+    public static PKPass toPass(SignedVoucher voucher, MerchantBranding branding);
 
     /** Renders with {@code voided} derived from ledger status. */
-    public static PKPass toPass(SignedVoucher voucher, VoucherStatus status);
+    public static PKPass toPass(SignedVoucher voucher, MerchantBranding branding, VoucherStatus status);
 }
 ```
 
@@ -122,10 +122,10 @@ two real callers rather than one imagined.
 | `passTypeIdentifier` | constant `xyz.tcheeric.voucher` | Schema-required, semantically meaningless without Apple |
 | `teamIdentifier` | constant `imani` | As above |
 | `serialNumber` | `secret.getVoucherId()` | |
-| `organizationName` | `merchant_metadata.name` | Falls back to `secret.getIssuerId()` |
-| `description` | `secret.getMemo()` | Falls back to `"Gift Card"` |
-| `logoText` | `merchant_metadata.name` | Omitted when absent |
-| `backgroundColor` / `foregroundColor` | `merchant_metadata.bgColor` / `.fgColor` | Defaults below |
+| `organizationName` | `branding.organizationName()` | Falls back to `secret.getIssuerId()` |
+| `description` | `secret.getMemo()` | Then `branding.storeDescription()`, then `"Gift Card"` |
+| `logoText` | `branding.organizationName()` | Omitted when absent |
+| `backgroundColor` / `foregroundColor` | `branding` | Defaults below |
 | `expirationDate` | `secret.getExpiresAt()` | Epoch seconds → ISO 8601; omitted when null |
 | `voided` | `VoucherStatus` | `true` for `REDEEMED` and `REVOKED` |
 | `primaryFields[balance]` | `face_value` + `face_decimals` + `unit` | See currency rules |
@@ -139,9 +139,10 @@ two real callers rather than one imagined.
 constraint that the voucher is redeemable only with the issuing merchant.
 
 The following voucher tags are deliberately **not** mapped: `issuer_sig`,
-`backing_strategy`, `issuance_ratio`. They are verification and accounting concerns
-with no display meaning, and `issuer_sig` in particular should not be surfaced in a UI
-where it invites treatment as a credential.
+`backing_strategy`, `issuance_ratio`, `merchant_metadata`. The first three are
+verification and accounting concerns with no display meaning, and `issuer_sig` in
+particular should not be surfaced in a UI where it invites treatment as a credential.
+`merchant_metadata` is superseded by render-time branding — see below.
 
 `VoucherStatus` is not on `SignedVoucher`; it comes from the ledger. `toPass` therefore
 sets `voided` from an overload taking status, defaulting to `false` when the caller has
@@ -175,22 +176,52 @@ currencyCode: <ISO 4217>}`. Verify at implementation time that jPasskit serializ
 
 ## Merchant branding contract
 
-`merchant_metadata` is a free-form JSON string tag. The mapper reads four optional
-keys and tolerates anything else:
+Branding is **not** read from the voucher. It is resolved at render time by the caller
+and passed in:
 
-| Key | Type | Default when absent |
+```java
+public record MerchantBranding(
+    String organizationName,  // nullable
+    String logoUrl,           // nullable
+    String bannerUrl,         // nullable
+    String storeDescription,  // nullable
+    String backgroundColor,   // nullable, "rgb(r,g,b)"
+    String foregroundColor    // nullable, "rgb(r,g,b)"
+) {}
+```
+
+**Why not the `merchant_metadata` tag.** Branding is mutable; a signed voucher is not.
+A tag is signed into the secret at issuance, so a merchant changing their logo would
+leave every outstanding voucher either displaying stale branding or requiring
+re-issuance. Since the pass is a derived projection rendered on demand (D1), branding
+resolves at render time and the problem disappears. The `merchant_metadata` tag is
+therefore not read by the mapper.
+
+**Where the caller gets it.** The merchant's identity already lives in Nostr and is
+already served to the Java side by `GET /api/v1/merchant/bootstrap` as `profile` and
+`merchant_profile`:
+
+| Branding field | Source | Notes |
 |---|---|---|
-| `name` | string | `issuer_id` |
-| `logoUrl` | string | omitted |
-| `bgColor` | `rgb(r,g,b)` string | `rgb(20,20,20)` |
-| `fgColor` | `rgb(r,g,b)` string | `rgb(255,255,255)` |
+| `organizationName` | kind-0 `name` | NIP-01 profile metadata |
+| `logoUrl` | kind-0 `picture` | Blossom-hosted avatar |
+| `bannerUrl` | kind-0 `banner` | Blossom-hosted banner |
+| `storeDescription` | kind-30078 `d=imani:merchant` → `storeDescription` | May be NIP-44/NIP-04 encrypted |
+| `backgroundColor` / `foregroundColor` | **no source yet** | See open item |
 
-No schema enforcement, no new NUT-10 tags, no validation beyond parseability.
-Malformed or absent `merchant_metadata` yields defaults and a `WARN` log — it must
-never fail rendering, since branding is cosmetic and the voucher is still valid
-without it.
+Do **not** use `businessName` from the merchant profile — possa-merchant is actively
+removing it (`BusinessStep.tsx` deletes the key on save). kind-0 `name` is the live
+field.
 
-`logoUrl` is carried through for the renderer to fetch. The mapper performs no I/O.
+**Fallbacks.** Every field is nullable and every one has a default:
+`organizationName` → `secret.getIssuerId()`; `description` → voucher memo, then
+`storeDescription`, then `"Gift Card"`; `backgroundColor` → `rgb(20,20,20)`;
+`foregroundColor` → `rgb(255,255,255)`; image URLs omitted when absent. A null
+`MerchantBranding` is legal and yields defaults throughout. Branding must never be able
+to fail rendering — the voucher is valid without it.
+
+URLs are carried through for the renderer to fetch. The mapper performs no I/O, and
+`cashu-voucher-pass` gains no Nostr dependency: resolution is entirely the caller's.
 
 ## Barcode
 
@@ -265,10 +296,10 @@ separately; it does not block this module.
 - `unit` is not a valid ISO 4217 code,
 - `faceValue` is negative.
 
-It does **not** throw for absent or malformed `merchant_metadata`, absent `memo`,
-absent `expiresAt`, or a `faceDecimals` that disagrees with the currency's default
-fraction digits — all have defined fallbacks or, in the last case, a `WARN` and the
-issuer's own value.
+It does **not** throw for a null or empty `MerchantBranding`, absent `memo`, absent
+`expiresAt`, or a `faceDecimals` that disagrees with the currency's default fraction
+digits — all have defined fallbacks or, in the last case, a `WARN` and the issuer's own
+value.
 
 The mapper rejects only what makes rendering impossible. Everything the stack already
 accepts as a valid voucher renders, because a display concern must not be able to
@@ -290,8 +321,8 @@ Unit tests only — the mapper is a pure function with no I/O to stub.
 3. **Currency rejection** — an unknown unit throws; a negative `faceValue` throws.
 4. **Decimals mismatch** — `(5000, 2, "jpy")` renders `50.00` and does not throw,
    trusting `face_decimals` over the currency default.
-5. **Branding fallbacks** — absent, empty, and malformed `merchant_metadata` each
-   yield defaults without throwing.
+5. **Branding fallbacks** — a null `MerchantBranding`, and one with every field null,
+   both yield defaults without throwing.
 6. **Optional fields** — absent `expiresAt` omits both `expirationDate` and the
    auxiliary field; absent `memo` falls back.
 7. **Voided** — `REDEEMED` and `REVOKED` set `voided: true`; `ISSUED` does not.
@@ -300,10 +331,12 @@ Unit tests only — the mapper is a pure function with no I/O to stub.
 
 ## Assumptions to confirm
 
-1. **The `merchant_metadata` key names above** (`name`, `logoUrl`, `bgColor`,
-   `fgColor`) were proposed during design and adopted as defaults rather than
-   explicitly ratified. If imani-merchant already emits a different shape, the mapper
-   follows it. Cheap to change; does not block implementation.
+1. **Brand colours have no source.** Neither the kind-0 profile nor the kind-30078
+   `imani:merchant` event carries `backgroundColor`/`foregroundColor`, so every pass
+   renders with the defaults until possa-merchant adds them to the merchant profile
+   during onboarding and in settings. Passes render correctly meanwhile — this is the
+   one branding field that needs new work outside this module, and it does not block
+   implementation.
 
 ## Consequences
 
