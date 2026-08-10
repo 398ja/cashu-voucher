@@ -7,6 +7,7 @@ import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Currency;
@@ -47,6 +48,14 @@ public final class VoucherPassMapper {
 
     static final String DEFAULT_BACKGROUND_COLOR = "rgb(20,20,20)";
     static final String DEFAULT_FOREGROUND_COLOR = "rgb(255,255,255)";
+
+    /**
+     * Prefix matching imani-qr's discriminated payload taxonomy. A bare UUID would
+     * fall through to {@code UNKNOWN} in the wallet's scanner.
+     */
+    static final String BARCODE_PREFIX = "voucher:";
+
+    static final String BARCODE_FORMAT_QR = "PKBarcodeFormatQR";
 
     private VoucherPassMapper() {
     }
@@ -99,7 +108,7 @@ public final class VoucherPassMapper {
                 expirationDate,
                 isVoided(status),
                 storeCard,
-                null,
+                List.of(barcode(secret)),
                 userInfo(secret, b));
     }
 
@@ -162,6 +171,26 @@ public final class VoucherPassMapper {
             userInfo.put("stripUrl", b.bannerUrl());
         }
         return Map.copyOf(userInfo);
+    }
+
+    /**
+     * A redemption code, not a transfer code.
+     *
+     * <p>The wallet's share QR carries the raw token as an animated NUT-16 sequence
+     * and hands over bearer value. This one carries an identifier the merchant
+     * resolves against the ledger. Conflating them would let a merchant scanning a
+     * customer's card receive the whole token instead of redeeming against it.
+     *
+     * <p>{@code altText} is the bare UUID — it exists for a cashier to key in when a
+     * scanner fails, so it carries no prefix.
+     */
+    private static PassJson.Barcode barcode(VoucherSecret secret) {
+        String voucherId = String.valueOf(secret.getVoucherId());
+        return new PassJson.Barcode(
+                BARCODE_FORMAT_QR,
+                BARCODE_PREFIX + voucherId,
+                StandardCharsets.UTF_8.name(),
+                voucherId);
     }
 
     /**

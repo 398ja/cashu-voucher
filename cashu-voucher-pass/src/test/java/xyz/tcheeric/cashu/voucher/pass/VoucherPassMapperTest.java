@@ -1,5 +1,7 @@
 package xyz.tcheeric.cashu.voucher.pass;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.BeforeAll;
@@ -285,5 +287,61 @@ class VoucherPassMapperTest {
     void usesStoreDescriptionWhenNoMemo() {
         assertThat(VoucherPassMapper.toPass(voucher("eur", 5000L, 2, null, null), FULL_BRANDING)
                 .description()).isEqualTo("Best coffee in town");
+    }
+
+    @Test
+    @DisplayName("emits exactly one prefixed QR barcode with a bare-UUID altText")
+    void emitsPrefixedQrBarcode() {
+        PassJson pass = VoucherPassMapper.toPass(
+                voucher("eur", 5000L, 2, null, "Gift card"), MerchantBranding.empty());
+
+        assertThat(pass.barcodes()).hasSize(1);
+        PassJson.Barcode barcode = pass.barcodes().get(0);
+
+        assertThat(barcode.format()).isEqualTo("PKBarcodeFormatQR");
+        assertThat(barcode.message()).isEqualTo("voucher:" + VOUCHER_ID);
+        assertThat(barcode.messageEncoding()).isEqualTo("UTF-8");
+        assertThat(barcode.altText()).isEqualTo(VOUCHER_ID).doesNotStartWith("voucher:");
+    }
+
+    @Test
+    @DisplayName("serialises to the expected pass.json document")
+    void serialisesToGoldenDocument() {
+        SignedVoucher v = voucher("eur", 5000L, 2, EXPIRES_AT, "Gift card");
+        PassJson pass = VoucherPassMapper.toPass(v, FULL_BRANDING, VoucherStatus.ISSUED);
+
+        JsonNode json = new ObjectMapper().valueToTree(pass);
+
+        assertThat(json.path("formatVersion").asInt()).isEqualTo(1);
+        assertThat(json.path("passTypeIdentifier").asText()).isEqualTo("xyz.tcheeric.voucher");
+        assertThat(json.path("teamIdentifier").asText()).isEqualTo("imani");
+        assertThat(json.path("serialNumber").asText()).isEqualTo(VOUCHER_ID);
+        assertThat(json.path("organizationName").asText()).isEqualTo("Corner Cafe");
+        assertThat(json.path("description").asText()).isEqualTo("Gift card");
+        assertThat(json.path("backgroundColor").asText()).isEqualTo("rgb(10,20,30)");
+        assertThat(json.path("expirationDate").asText()).isEqualTo("2030-01-01T00:00:00Z");
+        assertThat(json.path("voided").asBoolean()).isFalse();
+
+        JsonNode balance = json.path("storeCard").path("primaryFields").get(0);
+        assertThat(balance.path("key").asText()).isEqualTo("balance");
+        assertThat(balance.path("currencyCode").asText()).isEqualTo("EUR");
+        assertThat(balance.path("value").isNumber()).isTrue();
+        assertThat(balance.path("value").decimalValue()).isEqualByComparingTo("50.00");
+
+        JsonNode expires = json.path("storeCard").path("auxiliaryFields").get(0);
+        assertThat(expires.path("dateStyle").asText()).isEqualTo("PKDateStyleMedium");
+        assertThat(expires.has("currencyCode")).isFalse();
+
+        assertThat(json.path("storeCard").path("backFields")).hasSize(4);
+
+        JsonNode barcode = json.path("barcodes").get(0);
+        assertThat(barcode.path("format").asText()).isEqualTo("PKBarcodeFormatQR");
+        assertThat(barcode.path("message").asText()).isEqualTo("voucher:" + VOUCHER_ID);
+        assertThat(barcode.path("altText").asText()).isEqualTo(VOUCHER_ID);
+
+        assertThat(json.path("userInfo").path("stripUrl").asText())
+                .isEqualTo("https://blossom.example/banner.png");
+
+        assertThat(json.toString()).doesNotContain(v.getSecret().getIssuerSignature());
     }
 }
