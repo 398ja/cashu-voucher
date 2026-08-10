@@ -131,7 +131,7 @@ two real callers rather than one imagined.
 | `primaryFields[balance]` | `face_value` + `face_decimals` + `unit` | See currency rules |
 | `auxiliaryFields[expires]` | `secret.getExpiresAt()` | `dateStyle: PKDateStyleMedium` |
 | `backFields` | voucher id, issuer id, `issuer_pubkey`, terms | See below |
-| `barcodes[0]` | `secret.getVoucherId()` | See barcode rules |
+| `barcodes[0]` | `"voucher:" + secret.getVoucherId()` | See barcode rules |
 | `userInfo` | `{"voucherId": "<uuid>"}` | Links the card to proofs the wallet already holds |
 
 `backFields` carries, in order: `voucherId`, `issuer` (issuer id), `issuerKey`
@@ -197,22 +197,66 @@ without it.
 ```json
 "barcodes": [{
   "format": "PKBarcodeFormatQR",
-  "message": "<voucherId>",
+  "message": "voucher:<uuid>",
   "messageEncoding": "utf-8",
-  "altText": "<voucherId>"
+  "altText": "<uuid>"
 }]
 ```
 
 - Emit the `barcodes` **array** only. The singular `barcode` key is the deprecated
   pre-iOS 9 form; nothing in our stack reads it.
-- `message` is the bare voucher UUID. The ledger is the source of truth for status, so
-  the scanner needs only an identifier to look up. A UUID is 36 ASCII characters
-  against a QR limit of ~2,953 bytes — capacity is not a consideration.
-- `altText` renders the ID as human-readable text beneath the code, so a cashier can
-  key it in when a scanner fails. This is a real failure mode for gift cards and the
-  fallback is free.
+- `message` is `voucher:` + the voucher UUID. The ledger is the source of truth for
+  status, so a scanner needs only an identifier to look up. A prefixed UUID is ~44
+  ASCII characters against a QR limit of ~2,953 bytes — capacity is not a
+  consideration.
+- `altText` renders the bare UUID as human-readable text beneath the code (no prefix —
+  it is for a human to key in), so a cashier can enter it when a scanner fails. This is
+  a real failure mode for gift cards and the fallback is free.
 - `utf-8` rather than Apple's `iso-8859-1` convention, because we write the reader and
   are not constrained by third-party decoders.
+
+### Why a prefix, and why not the wallet's existing QR
+
+The imani wallet already renders a voucher QR (`voucher/js/vouchers.js::renderShareQr`),
+and the pass barcode is deliberately **not** the same payload.
+
+That QR is a *share/transfer* code: it carries the raw Cashu token, rendered as an
+animated multi-frame NUT-16 BC-UR sequence, falling back to a static token QR and then
+to a receive URL. A peer scans it and receives the bearer value.
+
+The pass barcode is a *redemption* code: a merchant scans an identifier and resolves it
+against the ledger. Two reasons they must stay distinct:
+
+1. **The share QR gives away the money.** If the pass carried the same payload, a
+   merchant scanning a customer's card at the till would receive the whole token rather
+   than redeem against it.
+2. **`pass.json` barcodes are static.** Entries in the `barcodes` array are alternate
+   *formats* of a single message, not different messages — the schema has no animated
+   or multi-frame concept. The existence of `AnimatedQrRenderer` is proof that tokens
+   routinely exceed static QR capacity, so a token in a pass barcode is not a trade-off
+   but an impossibility.
+
+The `voucher:` prefix exists because every payload the wallet's scanner accepts is
+prefix-discriminated (`packages/imani-qr/src/detector/patterns.ts`): `vreqa` for
+payment requests, `cashua`/`cashub` for tokens, `npub1`, `ur:bytes/` for animated
+fragments, with `cashu:` and `nostr:` as the established URI-style prefixes. A bare
+UUID would fall through to `UNKNOWN`, and is the shape most likely to collide with
+something else later. `voucher:<uuid>` follows the existing house style and routes
+unambiguously.
+
+### External dependency (outside this spec's scope)
+
+Recognising the new payload requires a change in **imani-apps**, not in
+`cashu-voucher`:
+
+- a `QrType.VOUCHER_REDEEM` entry with pattern `/^voucher:/i` in
+  `packages/imani-qr/src/detector/patterns.ts` and its `TYPE_DESCRIPTIONS`,
+- a corresponding handler registered alongside `TokenHandler` in
+  `packages/imani-qr/src/handlers/HandlerRegistry.ts`.
+
+Until that lands, passes render correctly and the QR is readable by any generic
+scanner, but the imani wallet's own scanner will classify it as `UNKNOWN`. Tracked
+separately; it does not block this module.
 
 ## Validation and errors
 
@@ -251,17 +295,15 @@ Unit tests only — the mapper is a pure function with no I/O to stub.
 6. **Optional fields** — absent `expiresAt` omits both `expirationDate` and the
    auxiliary field; absent `memo` falls back.
 7. **Voided** — `REDEEMED` and `REVOKED` set `voided: true`; `ISSUED` does not.
+8. **Barcode** — `message` is `voucher:` + the UUID, `altText` is the bare UUID
+   without the prefix, and exactly one entry is emitted under `barcodes`.
 
 ## Assumptions to confirm
 
-Both were proposed during design and adopted as defaults rather than explicitly
-ratified. Neither blocks implementation; both are cheap to change.
-
-1. **Barcode payload is the bare voucher UUID.** If the merchant scanner should
-   instead receive a signed or structured payload, that changes the `message` field
-   only.
-2. **The `merchant_metadata` key names above.** If imani-merchant already emits a
-   different shape, the mapper follows it.
+1. **The `merchant_metadata` key names above** (`name`, `logoUrl`, `bgColor`,
+   `fgColor`) were proposed during design and adopted as defaults rather than
+   explicitly ratified. If imani-merchant already emits a different shape, the mapper
+   follows it. Cheap to change; does not block implementation.
 
 ## Consequences
 
