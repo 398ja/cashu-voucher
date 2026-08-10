@@ -4,8 +4,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
+import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.Currency;
 import java.util.List;
 import java.util.Locale;
@@ -38,24 +41,43 @@ public final class VoucherPassMapper {
     static final String TERMS =
             "Redeemable only with the issuing merchant. Not redeemable at the mint.";
 
+    static final String DATE_STYLE_MEDIUM = "PKDateStyleMedium";
+
     private VoucherPassMapper() {
     }
 
     /**
-     * Renders a voucher as a store card.
+     * Renders a voucher as a store card, not voided.
      *
      * @param voucher the signed voucher; must not be null
      * @param branding merchant branding, or null for defaults
      * @return the pass document
      */
     public static PassJson toPass(SignedVoucher voucher, MerchantBranding branding) {
-        Objects.requireNonNull(voucher, "voucher must not be null");
+        return toPass(voucher, branding, null);
+    }
+
+    /**
+     * Renders a voucher as a store card, voided according to ledger status.
+     *
+     * <p>{@link VoucherStatus} is not carried on {@link SignedVoucher} — it comes from
+     * the ledger — so the caller resolves it. A null status means not voided.
+     *
+     * @param voucher the signed voucher; must not be null
+     * @param branding merchant branding, or null for defaults
+     * @param status ledger status, or null
+     * @return the pass document
+     */
+    public static PassJson toPass(SignedVoucher voucher, MerchantBranding branding,
+                                  VoucherStatus status) {
+        Objects.requireNonNull(voucher, "voucher");
         MerchantBranding b = branding != null ? branding : MerchantBranding.empty();
         VoucherSecret secret = voucher.getSecret();
+        String expirationDate = expirationDate(secret);
 
         PassJson.StoreCard storeCard = new PassJson.StoreCard(
                 List.of(balanceField(secret)),
-                null,
+                expirationDate == null ? null : List.of(expiryField(expirationDate)),
                 backFields(secret));
 
         return new PassJson(
@@ -69,11 +91,32 @@ public final class VoucherPassMapper {
                 null,
                 null,
                 null,
-                null,
-                false,
+                expirationDate,
+                isVoided(status),
                 storeCard,
                 null,
                 null);
+    }
+
+    /** Epoch seconds to an ISO-8601 instant, or null when the voucher never expires. */
+    private static String expirationDate(VoucherSecret secret) {
+        Long expiresAt = secret.getExpiresAt();
+        return expiresAt == null
+                ? null
+                : DateTimeFormatter.ISO_INSTANT.format(Instant.ofEpochSecond(expiresAt));
+    }
+
+    private static PassJson.Field expiryField(String expirationDate) {
+        return new PassJson.Field("expires", "EXPIRES", expirationDate, null, DATE_STYLE_MEDIUM);
+    }
+
+    /**
+     * A pass is voided once the voucher can no longer be spent. {@code EXPIRED} is
+     * excluded deliberately: {@code expirationDate} already communicates it, and
+     * renderers grey the card out on that alone.
+     */
+    private static boolean isVoided(VoucherStatus status) {
+        return status == VoucherStatus.REDEEMED || status == VoucherStatus.REVOKED;
     }
 
     private static String description(VoucherSecret secret, MerchantBranding b) {

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
+import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -172,5 +173,51 @@ class VoucherPassMapperTest {
         assertThatCode(() -> VoucherPassMapper.toPass(
                 voucher("EUR", 5000L, 2, null, "Gift card"), MerchantBranding.empty()))
                 .doesNotThrowAnyException();
+    }
+
+    private static final long EXPIRES_AT = 1893456000L; // 2030-01-01T00:00:00Z
+
+    @Test
+    @DisplayName("sets an ISO-8601 expirationDate and an auxiliary expiry field")
+    void setsExpiry() {
+        PassJson pass = VoucherPassMapper.toPass(
+                voucher("eur", 5000L, 2, EXPIRES_AT, "Gift card"), MerchantBranding.empty());
+
+        assertThat(pass.expirationDate()).isEqualTo("2030-01-01T00:00:00Z");
+
+        PassJson.Field expires = field(pass.storeCard().auxiliaryFields(), "expires");
+        assertThat(expires.value()).isEqualTo("2030-01-01T00:00:00Z");
+        assertThat(expires.dateStyle()).isEqualTo("PKDateStyleMedium");
+        assertThat(expires.currencyCode()).isNull();
+    }
+
+    @Test
+    @DisplayName("omits expiry entirely when the voucher has none")
+    void omitsExpiryWhenAbsent() {
+        PassJson pass = VoucherPassMapper.toPass(
+                voucher("eur", 5000L, 2, null, "Gift card"), MerchantBranding.empty());
+
+        assertThat(pass.expirationDate()).isNull();
+        assertThat(pass.storeCard().auxiliaryFields()).isNull();
+    }
+
+    @Test
+    @DisplayName("voids the pass for redeemed and revoked vouchers only")
+    void voidsForTerminalStatuses() {
+        SignedVoucher v = voucher("eur", 5000L, 2, null, "Gift card");
+
+        assertThat(VoucherPassMapper.toPass(v, MerchantBranding.empty(), VoucherStatus.REDEEMED)
+                .voided()).isTrue();
+        assertThat(VoucherPassMapper.toPass(v, MerchantBranding.empty(), VoucherStatus.REVOKED)
+                .voided()).isTrue();
+        assertThat(VoucherPassMapper.toPass(v, MerchantBranding.empty(), VoucherStatus.ISSUED)
+                .voided()).isFalse();
+    }
+
+    @Test
+    @DisplayName("defaults to not voided when no status is supplied")
+    void defaultsToNotVoided() {
+        assertThat(VoucherPassMapper.toPass(voucher("eur", 5000L, 2, null, "Gift card"),
+                MerchantBranding.empty()).voided()).isFalse();
     }
 }
