@@ -23,6 +23,14 @@
             <artifactId>cashu-voucher-domain</artifactId>
         </dependency>
 
+        <!-- VoucherSecret (xyz.tcheeric.cashu.common.nut18) is reachable from the
+             mapper's public signature, so this must be a direct dependency rather than
+             relying on the transitive resolution the reactor happens to provide. -->
+        <dependency>
+            <groupId>xyz.tcheeric</groupId>
+            <artifactId>cashu-lib-common</artifactId>
+        </dependency>
+
         <!-- Annotations only. Serialization is the caller's ObjectMapper. -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -53,6 +61,18 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Test-only: signs vouchers directly with Schnorr/hex to build golden fixtures. -->
+        <dependency>
+            <groupId>xyz.tcheeric</groupId>
+            <artifactId>nostr-java-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
