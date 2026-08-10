@@ -160,9 +160,12 @@ BigDecimal amount = BigDecimal.valueOf(secret.getFaceValue(), secret.getFaceDeci
   path. `faceValue=5000, faceDecimals=2` → exactly `50.00`.
 - `pass.json`'s `currencyCode` formatting expects **major units**, so the scaling is
   required for correctness, not presentation.
-- **Cross-check `faceDecimals` against `ccy.getDefaultFractionDigits()`.** JPY is 0;
-  KWD and BHD are 3. A mismatch means the voucher was minted inconsistently and would
-  render off by a factor of ten or more. Reject at map time.
+- **Cross-check `faceDecimals` against `ccy.getDefaultFractionDigits()`, warn on
+  mismatch, and scale by `faceDecimals` regardless.** JPY is 0; KWD and BHD are 3. A
+  mismatch means the voucher was minted inconsistently, but `face_decimals` is what the
+  issuer signed and the rest of the stack treats as valid — a display mapper is the
+  wrong layer to overrule it. The `WARN` surfaces the bad minting without a cosmetic
+  concern being able to break rendering.
 - `unit` is lowercase by Cashu convention (`eur`); ISO 4217 is uppercase. Uppercase
   with `Locale.ROOT` to avoid the Turkish dotless-i trap.
 
@@ -216,11 +219,16 @@ without it.
 `toPass` throws `IllegalArgumentException` when:
 
 - `unit` is not a valid ISO 4217 code,
-- `faceDecimals` disagrees with the currency's default fraction digits,
 - `faceValue` is negative.
 
-It does **not** throw for absent or malformed `merchant_metadata`, absent `memo`, or
-absent `expiresAt` — all have defined fallbacks.
+It does **not** throw for absent or malformed `merchant_metadata`, absent `memo`,
+absent `expiresAt`, or a `faceDecimals` that disagrees with the currency's default
+fraction digits — all have defined fallbacks or, in the last case, a `WARN` and the
+issuer's own value.
+
+The mapper rejects only what makes rendering impossible. Everything the stack already
+accepts as a valid voucher renders, because a display concern must not be able to
+withhold a card the ledger considers good.
 
 `toPass` does not verify the issuer signature. `SignedVoucher` already guarantees a
 signature and public key are present at construction, and verification is a separate
@@ -235,13 +243,14 @@ Unit tests only — the mapper is a pure function with no I/O to stub.
    document, compared as a parsed tree rather than a string.
 2. **Currency scaling** — `(5000, 2, "eur")` → `50.00`; `(5000, 0, "jpy")` → `5000`;
    `(5000, 3, "kwd")` → `5.000`.
-3. **Currency rejection** — unknown unit, and `faceDecimals` mismatched against the
-   currency, both throw.
-4. **Branding fallbacks** — absent, empty, and malformed `merchant_metadata` each
+3. **Currency rejection** — an unknown unit throws; a negative `faceValue` throws.
+4. **Decimals mismatch** — `(5000, 2, "jpy")` renders `50.00` and does not throw,
+   trusting `face_decimals` over the currency default.
+5. **Branding fallbacks** — absent, empty, and malformed `merchant_metadata` each
    yield defaults without throwing.
-5. **Optional fields** — absent `expiresAt` omits both `expirationDate` and the
+6. **Optional fields** — absent `expiresAt` omits both `expirationDate` and the
    auxiliary field; absent `memo` falls back.
-6. **Voided** — `REDEEMED` and `REVOKED` set `voided: true`; `ISSUED` does not.
+7. **Voided** — `REDEEMED` and `REVOKED` set `voided: true`; `ISSUED` does not.
 
 ## Assumptions to confirm
 
