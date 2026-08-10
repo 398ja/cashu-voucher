@@ -43,6 +43,7 @@ This project follows **Hexagonal Architecture** (Ports & Adapters) with three mo
 - **cashu-voucher-domain** - Pure domain logic (VoucherSecret, SignedVoucher, validation)
 - **cashu-voucher-app** - Application services and port interfaces
 - **cashu-voucher-nostr** - Nostr infrastructure adapter (NIP-33, NIP-17)
+- **cashu-voucher-pass** - Maps a signed voucher to a `pass.json` store card document for imani's own wallet (schema only - not an Apple Wallet integration; no certificates or `.pkpass` bundles)
 
 ## Quick Start
 
@@ -195,6 +196,16 @@ Nostr infrastructure adapter implementing port interfaces.
 | `NostrClientAdapter` | Relay connection management |
 | `VoucherLedgerEvent` | NIP-33 event mapper |
 | `VoucherBackupPayload` | NIP-17 payload format |
+
+### cashu-voucher-pass
+
+Maps a signed voucher to a `pass.json` document rendered by imani's own wallet. A pure, I/O-free function - Apple Wallet is not a target, and there is no certificate, `.pkpass` bundle, or pass update web service.
+
+| Class | Description |
+|-------|-------------|
+| `VoucherPassMapper` | Maps `SignedVoucher` + `MerchantBranding` to `PassJson` |
+| `PassJson` | The subset of the `pass.json` schema this project emits |
+| `MerchantBranding` | Merchant branding resolved at render time |
 
 ## Building
 
