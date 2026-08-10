@@ -21,7 +21,7 @@ Cashu Voucher implements **Model B** gift card vouchers - vouchers that are spen
 
 ## Architecture
 
-This project follows **Hexagonal Architecture** (Ports & Adapters) with three modules:
+This project follows **Hexagonal Architecture** (Ports & Adapters) across three core modules:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -39,6 +39,10 @@ This project follows **Hexagonal Architecture** (Ports & Adapters) with three mo
 │            (Pure business logic, no dependencies)               │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+A fourth module, `cashu-voucher-pass`, is deliberately outside this ports/adapters chain:
+it's a pure derived-view mapper (`SignedVoucher` -> `pass.json`) that depends only on
+`cashu-voucher-domain` and takes no port, so it isn't part of the diagram above.
 
 - **cashu-voucher-domain** - Pure domain logic (VoucherSecret, SignedVoucher, validation)
 - **cashu-voucher-app** - Application services and port interfaces
