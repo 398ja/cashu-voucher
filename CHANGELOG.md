@@ -9,13 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.10.0] - 2026-08-10
+
 ### Added
 
 - **`cashu-voucher-pass` module** - maps a `SignedVoucher` to a `pass.json` store card
   document for imani's own wallet. This is a schema-only adoption, not an Apple Wallet
   integration: no certificates, no `.pkpass` bundles, no pass update web service.
-  - `VoucherPassMapper` - pure, I/O-free mapping function
+  - `VoucherPassMapper` - pure, I/O-free mapping function, with two `toPass` overloads
+    (the second taking `VoucherStatus` from the ledger to set `voided`)
   - `PassJson`, `MerchantBranding` - the document model and render-time branding input
+  - Branding resolves at render time rather than from the signed voucher, so a merchant
+    changing their logo does not strand outstanding vouchers on stale branding
+  - The barcode carries `voucher:<uuid>`, a redemption identifier resolved against the
+    ledger - deliberately not the wallet's share QR, which carries bearer value
 
 ---
 
