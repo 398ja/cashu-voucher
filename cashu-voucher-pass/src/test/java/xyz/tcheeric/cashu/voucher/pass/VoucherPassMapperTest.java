@@ -9,10 +9,12 @@ import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherSignatureService;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("VoucherPassMapper")
@@ -112,5 +114,63 @@ class VoucherPassMapperTest {
     void rejectsNullVoucher() {
         assertThatThrownBy(() -> VoucherPassMapper.toPass(null, MerchantBranding.empty()))
                 .isInstanceOf(NullPointerException.class);
+    }
+
+    private static PassJson.Field balanceOf(String unit, long faceValue, int faceDecimals) {
+        return field(VoucherPassMapper.toPass(
+                voucher(unit, faceValue, faceDecimals, null, "Gift card"),
+                MerchantBranding.empty()).storeCard().primaryFields(), "balance");
+    }
+
+    @Test
+    @DisplayName("scales balance into major units with the currency code")
+    void scalesBalance() {
+        PassJson.Field balance = balanceOf("eur", 5000L, 2);
+
+        assertThat(balance.value()).isEqualTo(new BigDecimal("50.00"));
+        assertThat(balance.currencyCode()).isEqualTo("EUR");
+        assertThat(balance.label()).isEqualTo("BALANCE");
+    }
+
+    @Test
+    @DisplayName("handles zero-decimal and three-decimal currencies")
+    void handlesOtherCurrencyScales() {
+        assertThat(balanceOf("jpy", 5000L, 0).value()).isEqualTo(new BigDecimal("5000"));
+        assertThat(balanceOf("jpy", 5000L, 0).currencyCode()).isEqualTo("JPY");
+        assertThat(balanceOf("kwd", 5000L, 3).value()).isEqualTo(new BigDecimal("5.000"));
+        assertThat(balanceOf("kwd", 5000L, 3).currencyCode()).isEqualTo("KWD");
+    }
+
+    @Test
+    @DisplayName("trusts face_decimals when it disagrees with the currency default")
+    void trustsFaceDecimalsOverCurrencyDefault() {
+        // JPY defaults to 0 fraction digits; the voucher says 2. face_decimals wins.
+        assertThat(balanceOf("jpy", 5000L, 2).value()).isEqualTo(new BigDecimal("50.00"));
+    }
+
+    @Test
+    @DisplayName("rejects an unknown currency unit")
+    void rejectsUnknownUnit() {
+        assertThatThrownBy(() -> VoucherPassMapper.toPass(
+                voucher("zzz", 5000L, 2, null, "Gift card"), MerchantBranding.empty()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("ISO 4217");
+    }
+
+    @Test
+    @DisplayName("rejects a negative face value")
+    void rejectsNegativeFaceValue() {
+        assertThatThrownBy(() -> VoucherPassMapper.toPass(
+                voucher("eur", -1L, 2, null, "Gift card"), MerchantBranding.empty()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("negative");
+    }
+
+    @Test
+    @DisplayName("accepts an already-uppercase unit")
+    void acceptsUppercaseUnit() {
+        assertThatCode(() -> VoucherPassMapper.toPass(
+                voucher("EUR", 5000L, 2, null, "Gift card"), MerchantBranding.empty()))
+                .doesNotThrowAnyException();
     }
 }
