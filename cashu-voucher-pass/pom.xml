@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>xyz.tcheeric</groupId>
+        <artifactId>cashu-voucher</artifactId>
+        <version>0.10.0</version>
+    </parent>
+
+    <artifactId>cashu-voucher-pass</artifactId>
+    <packaging>jar</packaging>
+
+    <name>Cashu Voucher Pass</name>
+    <description>Maps signed vouchers to Apple pass.json documents (schema only, no Apple Wallet integration)</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>xyz.tcheeric</groupId>
+            <artifactId>cashu-voucher-domain</artifactId>
+        </dependency>
+
+        <!-- VoucherSecret (xyz.tcheeric.cashu.common.nut18) is reachable from the
+             mapper's public signature, so this must be a direct dependency rather than
+             relying on the transitive resolution the reactor happens to provide. -->
+        <dependency>
+            <groupId>xyz.tcheeric</groupId>
+            <artifactId>cashu-lib-common</artifactId>
+        </dependency>
+
+        <!-- Annotations only. Serialization is the caller's ObjectMapper. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Test-only: signs vouchers directly with Schnorr/hex to build golden fixtures. -->
+        <dependency>
+            <groupId>xyz.tcheeric</groupId>
+            <artifactId>nostr-java-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

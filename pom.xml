@@ -7,7 +7,7 @@
 
     <groupId>xyz.tcheeric</groupId>
     <artifactId>cashu-voucher</artifactId>
-    <version>0.9.0</version>
+    <version>0.10.0</version>
     <packaging>pom</packaging>
 
     <name>Cashu Voucher</name>
@@ -18,6 +18,7 @@
         <module>cashu-voucher-domain</module>
         <module>cashu-voucher-nostr</module>
         <module>cashu-voucher-app</module>
+        <module>cashu-voucher-pass</module>
     </modules>
 
     <properties>
@@ -69,6 +70,11 @@
             <dependency>
                 <groupId>xyz.tcheeric</groupId>
                 <artifactId>cashu-voucher-app</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>xyz.tcheeric</groupId>
+                <artifactId>cashu-voucher-pass</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
