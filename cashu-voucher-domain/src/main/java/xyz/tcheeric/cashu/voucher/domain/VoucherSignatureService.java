@@ -1,22 +1,17 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.NonNull;
 import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
-import xyz.tcheeric.cashu.common.nut18.VoucherTags;
+import xyz.tcheeric.cashu.voucher.domain.VoucherCanonicalBytes.NumericTagForm;
 
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Service for secp256k1/Schnorr signature generation and verification of voucher secrets.
@@ -197,7 +192,8 @@ public final class VoucherSignatureService {
             // expire. Only reached when the current form has already failed, so a voucher
             // signed the new way never pays for this.
             if (!valid) {
-                byte[] legacyHash = sha256(getCanonicalBytesForSigning(secret, true));
+                byte[] legacyHash = sha256(
+                        VoucherCanonicalBytes.of(secret, NumericTagForm.TRUNCATED_TO_LONG));
                 valid = Schnorr.verify(legacyHash, publicKeyBytes, signature);
                 if (valid) {
                     logger.info("voucher_signature_legacy_canonical voucher_id={} issuer_id={} "
@@ -249,158 +245,8 @@ public final class VoucherSignatureService {
         return new SignedVoucher(secret);
     }
 
-    /**
-     * Gets the canonical bytes for signing (excludes signature-related tags).
-     *
-     * <p>The canonical representation is the NUT-10 JSON serialization of the
-     * VoucherSecret with all tags except {@code issuer_sig} and {@code issuer_pubkey}.
-     * These tags are added after signing, so they must be excluded to ensure
-     * deterministic signing and verification.
-     *
-     * <p>Format matches WellKnownSecretSerializer: ["KIND", "data_hex", "nonce", [[tags]]]
-     * where numbers are serialized as numbers, not quoted strings.
-     *
-     * @param secret the voucher secret
-     * @return canonical bytes for signing
-     */
-    /**
-     * Appends a numeric tag value in canonical form.
-     *
-     * <p>{@code legacyLongValue} reproduces the pre-fix behaviour, which truncated every
-     * {@link Number} through {@code longValue()}. That is only used to re-verify vouchers
-     * signed before the fix; nothing signs that way any more.
-     */
-    /**
-     * Tags whose values are written as bare JSON numbers in the canonical bytes.
-     *
-     * <p>Since NUT-10 tag values are always strings on the wire, the key is the only
-     * remaining record of which values were numeric when these signatures were made.
-     */
-    private static boolean isNumericTag(String key) {
-        return VoucherTags.FACE_VALUE.equals(key)
-                || VoucherTags.EXPIRES_AT.equals(key)
-                || VoucherTags.FACE_DECIMALS.equals(key)
-                || VoucherTags.ISSUANCE_RATIO.equals(key);
-    }
-
-    /**
-     * Reads a numeric tag value, preferring the integral form so whole numbers do not
-     * acquire a decimal point they never had when signed.
-     */
-    private static Number parseNumber(String raw) {
-        try {
-            return Long.valueOf(raw);
-        } catch (NumberFormatException notIntegral) {
-            return Double.valueOf(raw);
-        }
-    }
-
-    private static void appendNumber(StringBuilder sb, Number n, boolean legacyLongValue) {
-        if (legacyLongValue) {
-            sb.append(n.longValue());
-            return;
-        }
-        if (n instanceof Double || n instanceof Float) {
-            double d = n.doubleValue();
-            // Integral doubles serialise as longs, exactly as WellKnownSecretSerializer
-            // does, so 1.0 and 1 produce identical bytes rather than two valid forms.
-            // NaN/Infinity fall through to longValue() rather than emitting the literals
-            // "NaN"/"Infinity", which are not JSON and would not round-trip.
-            if (Double.isFinite(d) && d != Math.floor(d)) {
-                sb.append(d);
-                return;
-            }
-        }
-        sb.append(n.longValue());
-    }
-
     private static byte[] getCanonicalBytesForSigning(VoucherSecret secret) {
-        return getCanonicalBytesForSigning(secret, false);
-    }
-
-    private static byte[] getCanonicalBytesForSigning(VoucherSecret secret, boolean legacyLongValue) {
-        try {
-            // Build canonical JSON array manually to match WellKnownSecretSerializer format
-            // but exclude the issuer_sig tag
-            StringBuilder sb = new StringBuilder();
-            sb.append("[\"").append(WellKnownSecret.Kind.VOUCHER.name()).append("\",\"");
-            sb.append(Hex.toHexString(secret.getData()));
-            sb.append("\",\"");
-            sb.append(secret.getNonce() != null ? secret.getNonce() : "");
-            sb.append("\",[");
-
-            boolean first = true;
-            for (var tag : secret.getTags()) {
-                // Skip signature and public key tags for signing
-                // These are added after signing, so they must be excluded from canonical bytes
-                if (VoucherTags.ISSUER_SIG.equals(tag.getKey()) ||
-                    VoucherTags.ISSUER_PUBKEY.equals(tag.getKey())) {
-                    continue;
-                }
-                if (!first) {
-                    sb.append(",");
-                }
-                first = false;
-
-                // Serialize tag as array: ["key", value1, value2, ...]
-                sb.append("[\"").append(escapeJson(tag.getKey())).append("\"");
-                for (var value : tag.getValues()) {
-                    sb.append(",");
-                    if (isNumericTag(tag.getKey())) {
-                        // NUT-10 carries every tag value as a string, so the runtime type no
-                        // longer tells us how a value was meant to be written. The voucher
-                        // schema is fixed and known, so the key decides: these tags signed as
-                        // bare JSON numbers before and must keep doing so, or every voucher
-                        // ever issued stops verifying.
-                        appendNumber(sb, parseNumber(String.valueOf(value)), legacyLongValue);
-                    } else {
-                        // Strings written with quotes and proper escaping
-                        sb.append("\"").append(escapeJson(String.valueOf(value))).append("\"");
-                    }
-                }
-                sb.append("]");
-            }
-            sb.append("]]");
-
-            return sb.toString().getBytes(StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to serialize voucher for signing", e);
-        }
-    }
-
-    /**
-     * Escapes special JSON characters in a string per RFC 8259.
-     *
-     * <p>All control characters (U+0000 through U+001F) must be escaped.
-     * Common ones use shorthand notation, others use backslash-u hex notation.
-     *
-     * @param input the string to escape
-     * @return the escaped string
-     */
-    private static String escapeJson(String input) {
-        if (input == null) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder();
-        for (char c : input.toCharArray()) {
-            switch (c) {
-                case '"': sb.append("\\\""); break;
-                case '\\': sb.append("\\\\"); break;
-                case '\b': sb.append("\\b"); break;
-                case '\f': sb.append("\\f"); break;
-                case '\n': sb.append("\\n"); break;
-                case '\r': sb.append("\\r"); break;
-                case '\t': sb.append("\\t"); break;
-                default:
-                    // Escape all other control characters (U+0000-U+001F) per RFC 8259
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-            }
-        }
-        return sb.toString();
+        return VoucherCanonicalBytes.of(secret);
     }
 
     /**

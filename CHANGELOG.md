@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-08-29
+
+### Changed
+
+- **The canonical signing bytes have one definition.** `VoucherGoldenVectorTest` hand-duplicated
+  the private serializer in `VoucherSignatureService`, kept in sync only by a comment saying
+  "kept in lockstep". That is why the 0.12.0 fix had to be made twice, and the copy could not
+  detect the divergence because it shared it. Extracted `VoucherCanonicalBytes`, which the
+  service and the vector generator both call. The bytes are unchanged; the legacy truncated
+  form is now `NumericTagForm.TRUNCATED_TO_LONG` rather than a boolean flag argument.
+- Removed imports left dead in `VoucherSignatureService`.
+
+### Added
+
+- `VoucherCanonicalBytesTest` pins the preimage against a literal expected string, covering
+  numeric-vs-quoted tags, fractional and integral ratios, exclusion of the signature tags, and
+  the legacy form. Asserting a literal rather than recomputing is deliberate: a test that
+  re-derives the bytes agrees with any change it shares.
+
 ## [0.12.0] - 2026-08-29
 
 ### Fixed
