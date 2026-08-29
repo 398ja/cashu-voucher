@@ -270,6 +270,31 @@ public final class VoucherSignatureService {
      * {@link Number} through {@code longValue()}. That is only used to re-verify vouchers
      * signed before the fix; nothing signs that way any more.
      */
+    /**
+     * Tags whose values are written as bare JSON numbers in the canonical bytes.
+     *
+     * <p>Since NUT-10 tag values are always strings on the wire, the key is the only
+     * remaining record of which values were numeric when these signatures were made.
+     */
+    private static boolean isNumericTag(String key) {
+        return VoucherTags.FACE_VALUE.equals(key)
+                || VoucherTags.EXPIRES_AT.equals(key)
+                || VoucherTags.FACE_DECIMALS.equals(key)
+                || VoucherTags.ISSUANCE_RATIO.equals(key);
+    }
+
+    /**
+     * Reads a numeric tag value, preferring the integral form so whole numbers do not
+     * acquire a decimal point they never had when signed.
+     */
+    private static Number parseNumber(String raw) {
+        try {
+            return Long.valueOf(raw);
+        } catch (NumberFormatException notIntegral) {
+            return Double.valueOf(raw);
+        }
+    }
+
     private static void appendNumber(StringBuilder sb, Number n, boolean legacyLongValue) {
         if (legacyLongValue) {
             sb.append(n.longValue());
@@ -321,15 +346,13 @@ public final class VoucherSignatureService {
                 sb.append("[\"").append(escapeJson(tag.getKey())).append("\"");
                 for (var value : tag.getValues()) {
                     sb.append(",");
-                    if (value instanceof Number) {
-                        // Numbers written without quotes, matching WellKnownSecretSerializer
-                        // — which means preserving the fraction for Double/Float. An
-                        // unconditional longValue() here signed every issuance_ratio in
-                        // (0,1) as 0, so the signature did not distinguish 0.05 from 0.5
-                        // and the ratio — the multiplier in currentFace = tokenAmount *
-                        // ratio — was effectively unsigned. See legacyLongValue below for
-                        // why that truncation still has to be reproducible.
-                        appendNumber(sb, (Number) value, legacyLongValue);
+                    if (isNumericTag(tag.getKey())) {
+                        // NUT-10 carries every tag value as a string, so the runtime type no
+                        // longer tells us how a value was meant to be written. The voucher
+                        // schema is fixed and known, so the key decides: these tags signed as
+                        // bare JSON numbers before and must keep doing so, or every voucher
+                        // ever issued stops verifying.
+                        appendNumber(sb, parseNumber(String.valueOf(value)), legacyLongValue);
                     } else {
                         // Strings written with quotes and proper escaping
                         sb.append("\"").append(escapeJson(String.valueOf(value))).append("\"");
