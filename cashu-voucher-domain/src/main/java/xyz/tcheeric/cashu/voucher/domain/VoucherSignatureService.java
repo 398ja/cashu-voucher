@@ -190,6 +190,22 @@ public final class VoucherSignatureService {
 
             boolean valid = Schnorr.verify(messageHash, publicKeyBytes, signature);
 
+            // Compatibility window. Every voucher issued before the fractional-tag fix
+            // was signed over bytes where any Double was truncated by longValue(), so a
+            // ratio of 0.056 signed as 0. Those vouchers are live and cannot be re-signed
+            // — the issuer's key is not here — so they must still verify until they
+            // expire. Only reached when the current form has already failed, so a voucher
+            // signed the new way never pays for this.
+            if (!valid) {
+                byte[] legacyHash = sha256(getCanonicalBytesForSigning(secret, true));
+                valid = Schnorr.verify(legacyHash, publicKeyBytes, signature);
+                if (valid) {
+                    logger.info("voucher_signature_legacy_canonical voucher_id={} issuer_id={} "
+                                    + "reason=pre_fractional_tag_fix",
+                            secret.getVoucherId(), secret.getIssuerId());
+                }
+            }
+
             if (logger.isDebugEnabled()) {
                 logger.debug("Verified voucher {} (issuerId={}): {}",
                         secret.getVoucherId(),
@@ -247,7 +263,62 @@ public final class VoucherSignatureService {
      * @param secret the voucher secret
      * @return canonical bytes for signing
      */
+    /**
+     * Appends a numeric tag value in canonical form.
+     *
+     * <p>{@code legacyLongValue} reproduces the pre-fix behaviour, which truncated every
+     * {@link Number} through {@code longValue()}. That is only used to re-verify vouchers
+     * signed before the fix; nothing signs that way any more.
+     */
+    /**
+     * Tags whose values are written as bare JSON numbers in the canonical bytes.
+     *
+     * <p>Since NUT-10 tag values are always strings on the wire, the key is the only
+     * remaining record of which values were numeric when these signatures were made.
+     */
+    private static boolean isNumericTag(String key) {
+        return VoucherTags.FACE_VALUE.equals(key)
+                || VoucherTags.EXPIRES_AT.equals(key)
+                || VoucherTags.FACE_DECIMALS.equals(key)
+                || VoucherTags.ISSUANCE_RATIO.equals(key);
+    }
+
+    /**
+     * Reads a numeric tag value, preferring the integral form so whole numbers do not
+     * acquire a decimal point they never had when signed.
+     */
+    private static Number parseNumber(String raw) {
+        try {
+            return Long.valueOf(raw);
+        } catch (NumberFormatException notIntegral) {
+            return Double.valueOf(raw);
+        }
+    }
+
+    private static void appendNumber(StringBuilder sb, Number n, boolean legacyLongValue) {
+        if (legacyLongValue) {
+            sb.append(n.longValue());
+            return;
+        }
+        if (n instanceof Double || n instanceof Float) {
+            double d = n.doubleValue();
+            // Integral doubles serialise as longs, exactly as WellKnownSecretSerializer
+            // does, so 1.0 and 1 produce identical bytes rather than two valid forms.
+            // NaN/Infinity fall through to longValue() rather than emitting the literals
+            // "NaN"/"Infinity", which are not JSON and would not round-trip.
+            if (Double.isFinite(d) && d != Math.floor(d)) {
+                sb.append(d);
+                return;
+            }
+        }
+        sb.append(n.longValue());
+    }
+
     private static byte[] getCanonicalBytesForSigning(VoucherSecret secret) {
+        return getCanonicalBytesForSigning(secret, false);
+    }
+
+    private static byte[] getCanonicalBytesForSigning(VoucherSecret secret, boolean legacyLongValue) {
         try {
             // Build canonical JSON array manually to match WellKnownSecretSerializer format
             // but exclude the issuer_sig tag
@@ -275,9 +346,13 @@ public final class VoucherSignatureService {
                 sb.append("[\"").append(escapeJson(tag.getKey())).append("\"");
                 for (var value : tag.getValues()) {
                     sb.append(",");
-                    if (value instanceof Number) {
-                        // Numbers written without quotes (matching WellKnownSecretSerializer)
-                        sb.append(((Number) value).longValue());
+                    if (isNumericTag(tag.getKey())) {
+                        // NUT-10 carries every tag value as a string, so the runtime type no
+                        // longer tells us how a value was meant to be written. The voucher
+                        // schema is fixed and known, so the key decides: these tags signed as
+                        // bare JSON numbers before and must keep doing so, or every voucher
+                        // ever issued stops verifying.
+                        appendNumber(sb, parseNumber(String.valueOf(value)), legacyLongValue);
                     } else {
                         // Strings written with quotes and proper escaping
                         sb.append("\"").append(escapeJson(String.valueOf(value))).append("\"");

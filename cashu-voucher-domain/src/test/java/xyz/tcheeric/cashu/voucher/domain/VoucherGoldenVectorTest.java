@@ -101,8 +101,10 @@ class VoucherGoldenVectorTest {
             sb.append("[\"").append(escapeJson(tag.getKey())).append("\"");
             for (var value : tag.getValues()) {
                 sb.append(",");
-                if (value instanceof Number) {
-                    sb.append(((Number) value).longValue());
+                if (isNumericTag(tag.getKey())) {
+                    // NUT-10 tag values are strings on the wire, so the key, not the runtime
+                    // type, records which values are written as bare JSON numbers.
+                    sb.append(Long.parseLong(String.valueOf(value)));
                 } else {
                     sb.append("\"").append(escapeJson(String.valueOf(value))).append("\"");
                 }
@@ -112,6 +114,13 @@ class VoucherGoldenVectorTest {
         sb.append("]]");
 
         return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static boolean isNumericTag(String key) {
+        return VoucherTags.FACE_VALUE.equals(key)
+                || VoucherTags.EXPIRES_AT.equals(key)
+                || VoucherTags.FACE_DECIMALS.equals(key)
+                || VoucherTags.ISSUANCE_RATIO.equals(key);
     }
 
     private static String escapeJson(String input) {

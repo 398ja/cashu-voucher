@@ -9,6 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-29
+
+### Fixed
+
+- **The canonical signing bytes no longer depend on the runtime type of a tag value.**
+  `getCanonicalBytesForSigning` chose between a bare JSON number and a quoted string using
+  `value instanceof Number`. cashu-lib 0.27.0 made NUT-10 tag values always `String`, which is what
+  the wire format carries, so every numeric tag would have serialised as `"1000"` instead of `1000`
+  and every voucher signature ever issued would have stopped verifying — including through the
+  legacy compatibility path, which was corrupted the same way. The voucher tag schema is fixed, so
+  the tag key now decides which values are numeric, restoring the previous bytes exactly.
+
+### Changed
+
+- Versions now come from `imani-bom` 0.1.56 rather than a locally pinned `cashu-lib.version`
+  (which had drifted to 0.21.0 while the ecosystem moved to 0.27.0).
+- Dropped the local `junit.version` pin, which fought the BOM's `junit-bom` import and left the
+  Jupiter engine and JUnit Platform on mismatched releases; surefire could not discover nested
+  tests at all. Surefire moves to 3.5.3 to match.
+
+## [0.11.0] - 2026-08-23
+
+### Fixed
+
+- **The issuer signature now covers `issuance_ratio`.** `VoucherSignatureService.getCanonicalBytesForSigning`
+  put every `Number` through `longValue()`, so a ratio of `0.056` was signed as `0` — as was `0.5`, and every
+  other ratio in `(0,1)`. Since `currentFace = tokenAmount * issuanceRatio`, the multiplier in the value formula
+  was effectively unsigned: a genuine voucher could have its ratio rewritten on the wire and still verify.
+  Confirmed against a live staging voucher before fixing.
+
+  Nothing caught it because the truncation was symmetric — the deserializer restores the `Double` faithfully, so
+  verification recomputed the same truncated bytes and agreed with itself. The comment claiming to match
+  `WellKnownSecretSerializer` was the tell: that serializer preserves fractions for `Double`/`Float`, and this
+  did not.
+
+### Changed
+
+- Integral doubles still serialise as longs, so `1.0` and `1` continue to produce identical canonical bytes.
+  `NaN`/`Infinity` fall back to `longValue()` rather than emitting literals that are not JSON.
+- `verify()` falls back to the pre-fix truncated canonical form when the current one fails, and logs
+  `voucher_signature_legacy_canonical` when it does. Vouchers already issued cannot be re-signed — the issuer's
+  key is not present — so the fallback stays until the last pre-fix voucher expires. New signatures never reach
+  that branch.
+
+### Upgrade notes
+
+**Signatures produced by 0.11.0 do not verify under 0.10.x.** The change is backward compatible (0.11.0 verifies
+old vouchers) but not forward compatible. Every verifier must be on 0.11.0+ **before** any issuer starts signing
+with it, or newly issued vouchers will be rejected by lagging consumers.
+
+Known verify call sites: `VoucherSplitCalculator` (imani-gateway-core) and `JdbcWalletPort`
+(imani-gateway-customer).
+
+Vouchers whose ratio is exactly `1.0` write no tag at all and are unaffected.
+
+
 ---
 
 ## [0.10.0] - 2026-08-10

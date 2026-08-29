@@ -721,4 +721,85 @@ class VoucherSignatureServiceTest {
             assertThat(valid).isTrue();
         }
     }
+
+    @Nested
+    @DisplayName("Fractional tag values")
+    class FractionalTagValues {
+
+        /**
+         * The defect: getCanonicalBytesForSigning truncated every Number through
+         * longValue(), so an issuanceRatio of 0.05 signed as 0 — indistinguishable from
+         * 0.5, or from any other ratio in (0,1). Since currentFace = tokenAmount * ratio,
+         * that left the multiplier in the value formula effectively unsigned.
+         */
+        @Test
+        @DisplayName("signature binds the issuance ratio")
+        void signatureBindsIssuanceRatio() {
+            VoucherSecret signed = VoucherSecret.builder()
+                    .voucherId(UUID.randomUUID())
+                    .issuerId(ISSUER_ID)
+                    .unit(UNIT)
+                    .faceValue(FACE_VALUE)
+                    .backingStrategy(DEFAULT_STRATEGY.name())
+                    .issuanceRatio(0.05)
+                    .faceDecimals(DEFAULT_FACE_DECIMALS)
+                    .build();
+            byte[] signature = VoucherSignatureService.sign(signed, issuerPrivateKeyHex);
+            assertThat(VoucherSignatureService.verify(signed, signature, issuerPublicKeyHex))
+                    .as("the voucher as signed")
+                    .isTrue();
+
+            // Same voucher, ratio inflated 10x. Before the fix both canonicalised to
+            // ["issuance_ratio",0] and this passed.
+            VoucherSecret tampered = VoucherSecret.builder()
+                    .voucherId(signed.getVoucherId())
+                    .nonce(signed.getNonce())
+                    .issuerId(ISSUER_ID)
+                    .unit(UNIT)
+                    .faceValue(FACE_VALUE)
+                    .backingStrategy(DEFAULT_STRATEGY.name())
+                    .issuanceRatio(0.5)
+                    .faceDecimals(DEFAULT_FACE_DECIMALS)
+                    .build();
+            assertThat(VoucherSignatureService.verify(tampered, signature, issuerPublicKeyHex))
+                    .as("ratio rewritten from 0.05 to 0.5")
+                    .isFalse();
+        }
+
+        /**
+         * Vouchers issued before the fix are live, and cannot be re-signed because the
+         * issuer's key is not here. They must keep verifying until they expire.
+         *
+         * <p>Fixture is a real staging voucher (imani_core.voucher_send, GBP, faceValue
+         * 1000, ratio 0.05611672278338945 = 1000/17820) whose signature only validates
+         * against canonical bytes containing ["issuance_ratio",0].
+         */
+        @Test
+        @DisplayName("still verifies a voucher signed with the legacy truncated form")
+        void verifiesLegacyTruncatedSignature() {
+            VoucherSecret legacy = VoucherSecret.builder()
+                    .voucherId(UUID.fromString("1d4410af-70f5-4c14-8606-519404684ea7"))
+                    .nonce("9637578ddcad0aafe73d5afc6d74bb32900023e2445827bc1d3fe4e9b0c98945")
+                    .issuerId("32571441619edd632f41b5d263ea508d30f43c0bef1b37c57a129f0242a4c30f")
+                    .unit("GBP")
+                    .faceValue(1000L)
+                    .expiresAt(1808069579L)
+                    .memo("Atomic purchase ap_4a6d5fb793d149b4")
+                    .faceDecimals(2)
+                    .backingStrategy("PROPORTIONAL")
+                    .issuanceRatio(0.05611672278338945)
+                    .build();
+
+            byte[] signature = Hex.decode(
+                    "e68978f2fd840614eb82ccb8b05c6b030f8810a00332859fa091ac7b84d39ed6"
+                  + "c4378248e0cac31ed8da4b6fc7cfb9635d943f6069246f66b5f10574c094caa6");
+            String issuerPubKey =
+                    "3919fce5dcc18e15654f4fd9efb70f9d18cd753a685469a139e1832126cbc75b";
+
+            assertThat(VoucherSignatureService.verify(legacy, signature, issuerPubKey))
+                    .as("a live pre-fix voucher must not stop verifying")
+                    .isTrue();
+        }
+    }
+
 }
