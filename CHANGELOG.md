@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-29
+
+### Fixed
+
+- **The canonical signing bytes no longer depend on the runtime type of a tag value.**
+  `getCanonicalBytesForSigning` chose between a bare JSON number and a quoted string using
+  `value instanceof Number`. cashu-lib 0.27.0 made NUT-10 tag values always `String`, which is what
+  the wire format carries, so every numeric tag would have serialised as `"1000"` instead of `1000`
+  and every voucher signature ever issued would have stopped verifying — including through the
+  legacy compatibility path, which was corrupted the same way. The voucher tag schema is fixed, so
+  the tag key now decides which values are numeric, restoring the previous bytes exactly.
+
+### Changed
+
+- Versions now come from `imani-bom` 0.1.56 rather than a locally pinned `cashu-lib.version`
+  (which had drifted to 0.21.0 while the ecosystem moved to 0.27.0).
+- Dropped the local `junit.version` pin, which fought the BOM's `junit-bom` import and left the
+  Jupiter engine and JUnit Platform on mismatched releases; surefire could not discover nested
+  tests at all. Surefire moves to 3.5.3 to match.
+
 ## [0.11.0] - 2026-08-23
 
 ### Fixed
