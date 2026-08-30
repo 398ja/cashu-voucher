@@ -16,7 +16,7 @@ Cashu Voucher implements **Model B** gift card vouchers - vouchers that are spen
 - **Backing Strategies** - FIXED, MINIMAL, PROPORTIONAL for different use cases
 - **Expiry Support** - Time-limited vouchers with automatic expiry checks
 - **Merchant Metadata** - Custom business data attached to vouchers
-- **Comprehensive Testing** - Extensive test coverage across all layers
+- **Comprehensive Testing** - 392 tests across domain, app, Nostr, and pass layers
 - **Hexagonal Architecture** - Clean separation of concerns, pluggable adapters
 
 ## Architecture
@@ -67,20 +67,29 @@ Add the voucher modules to your `pom.xml`:
     <dependency>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher-domain</artifactId>
-        <version>0.3.6</version>
+        <version>0.12.1</version>
     </dependency>
     <dependency>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher-app</artifactId>
-        <version>0.3.6</version>
+        <version>0.12.1</version>
     </dependency>
     <dependency>
         <groupId>xyz.tcheeric</groupId>
         <artifactId>cashu-voucher-nostr</artifactId>
-        <version>0.3.6</version>
+        <version>0.12.1</version>
+    </dependency>
+    <!-- optional: pass.json store-card mapper -->
+    <dependency>
+        <groupId>xyz.tcheeric</groupId>
+        <artifactId>cashu-voucher-pass</artifactId>
+        <version>0.12.1</version>
     </dependency>
 </dependencies>
 ```
+
+If your project imports `imani-bom`, omit the versions entirely; the BOM manages
+all four modules under one property so they cannot drift apart.
 
 ### Issue a Voucher
 
@@ -226,24 +235,33 @@ mvn -q jacoco:report
 
 ## Testing
 
-The project has comprehensive test coverage across all layers:
+392 tests across the four modules, all passing on `mvn -q verify`:
 
-| Layer | Tests | Coverage |
-|-------|-------|----------|
-| Domain | 126+ | VoucherSecret, SignedVoucher, signatures |
-| App | 72+ | VoucherService, MerchantVerification |
-| Nostr | 112+ | NIP-33, NIP-17, NIP-44, Testcontainers |
+| Module | Tests | Covers |
+|--------|-------|--------|
+| Domain | 126 | VoucherSecret, SignedVoucher, signatures, validation |
+| App | 114 | VoucherService, MerchantVerification, ports |
+| Nostr | 122 | NIP-33, NIP-17, NIP-44, Testcontainers |
+| Pass | 30 | `pass.json` mapping, merchant branding |
 
 ## Dependencies
 
-| Dependency | Version |
-|------------|---------|
-| Java | 21+ |
-| Maven | 3.9+ |
-| cashu-lib | 0.9.1 |
-| nostr-java | 1.1.0 |
-| Bouncy Castle | 1.78 |
-| Jackson | 2.17.0 |
+Versions are managed by [`imani-bom`](https://github.com/398ja/imani-bom) (currently
+pinned at `0.1.58` in this project's `<properties>`), except where this project
+declares its own.
+
+| Dependency | Version | Source |
+|------------|---------|--------|
+| Java | 21+ | |
+| Maven | 3.9+ | |
+| imani-bom | 0.1.58 | manages cashu-lib and the shared platform artifacts |
+| nostr-java | 2.0.0 | declared here |
+| bip-utils | 2.0.0 | declared here |
+| Bouncy Castle | 1.78 | declared here |
+| Jackson | 2.17.0 | declared here |
+
+Do not restate a cashu-lib version here: it comes from the BOM, and a second pin
+is how the two drift apart.
 
 ## Model B Implementation
 
