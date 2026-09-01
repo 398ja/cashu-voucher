@@ -1,0 +1,13 @@
+# Names in docs that are not Java types. Checked by `doccheck`.
+
+# Test fixtures / in-memory doubles described in the ports reference
+InMemoryLedgerPort
+InMemoryBackupPort
+
+# Jackson serializer named in the domain-entities reference
+VoucherSecretSerializer
+
+# Proposed types in the voucher-pass encoding design spec, not yet built
+VoucherPassPort
+AnimatedQrRenderer
+TokenHandler

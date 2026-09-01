@@ -9,6 +9,133 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-08-29
+
+### Changed
+
+- **The canonical signing bytes have one definition.** `VoucherGoldenVectorTest` hand-duplicated
+  the private serializer in `VoucherSignatureService`, kept in sync only by a comment saying
+  "kept in lockstep". That is why the 0.12.0 fix had to be made twice, and the copy could not
+  detect the divergence because it shared it. Extracted `VoucherCanonicalBytes`, which the
+  service and the vector generator both call. The bytes are unchanged; the legacy truncated
+  form is now `NumericTagForm.TRUNCATED_TO_LONG` rather than a boolean flag argument.
+- Removed imports left dead in `VoucherSignatureService`.
+
+### Added
+
+- `VoucherCanonicalBytesTest` pins the preimage against a literal expected string, covering
+  numeric-vs-quoted tags, fractional and integral ratios, exclusion of the signature tags, and
+  the legacy form. Asserting a literal rather than recomputing is deliberate: a test that
+  re-derives the bytes agrees with any change it shares.
+
+## [0.12.0] - 2026-08-29
+
+### Fixed
+
+- **The canonical signing bytes no longer depend on the runtime type of a tag value.**
+  `getCanonicalBytesForSigning` chose between a bare JSON number and a quoted string using
+  `value instanceof Number`. cashu-lib 0.27.0 made NUT-10 tag values always `String`, which is what
+  the wire format carries, so every numeric tag would have serialised as `"1000"` instead of `1000`
+  and every voucher signature ever issued would have stopped verifying — including through the
+  legacy compatibility path, which was corrupted the same way. The voucher tag schema is fixed, so
+  the tag key now decides which values are numeric, restoring the previous bytes exactly.
+
+### Changed
+
+- Versions now come from `imani-bom` 0.1.56 rather than a locally pinned `cashu-lib.version`
+  (which had drifted to 0.21.0 while the ecosystem moved to 0.27.0).
+- Dropped the local `junit.version` pin, which fought the BOM's `junit-bom` import and left the
+  Jupiter engine and JUnit Platform on mismatched releases; surefire could not discover nested
+  tests at all. Surefire moves to 3.5.3 to match.
+
+## [0.11.0] - 2026-08-23
+
+### Fixed
+
+- **The issuer signature now covers `issuance_ratio`.** `VoucherSignatureService.getCanonicalBytesForSigning`
+  put every `Number` through `longValue()`, so a ratio of `0.056` was signed as `0` — as was `0.5`, and every
+  other ratio in `(0,1)`. Since `currentFace = tokenAmount * issuanceRatio`, the multiplier in the value formula
+  was effectively unsigned: a genuine voucher could have its ratio rewritten on the wire and still verify.
+  Confirmed against a live staging voucher before fixing.
+
+  Nothing caught it because the truncation was symmetric — the deserializer restores the `Double` faithfully, so
+  verification recomputed the same truncated bytes and agreed with itself. The comment claiming to match
+  `WellKnownSecretSerializer` was the tell: that serializer preserves fractions for `Double`/`Float`, and this
+  did not.
+
+### Changed
+
+- Integral doubles still serialise as longs, so `1.0` and `1` continue to produce identical canonical bytes.
+  `NaN`/`Infinity` fall back to `longValue()` rather than emitting literals that are not JSON.
+- `verify()` falls back to the pre-fix truncated canonical form when the current one fails, and logs
+  `voucher_signature_legacy_canonical` when it does. Vouchers already issued cannot be re-signed — the issuer's
+  key is not present — so the fallback stays until the last pre-fix voucher expires. New signatures never reach
+  that branch.
+
+### Upgrade notes
+
+**Signatures produced by 0.11.0 do not verify under 0.10.x.** The change is backward compatible (0.11.0 verifies
+old vouchers) but not forward compatible. Every verifier must be on 0.11.0+ **before** any issuer starts signing
+with it, or newly issued vouchers will be rejected by lagging consumers.
+
+Known verify call sites: `VoucherSplitCalculator` (imani-gateway-core) and `JdbcWalletPort`
+(imani-gateway-customer).
+
+Vouchers whose ratio is exactly `1.0` write no tag at all and are unaffected.
+
+
+---
+
+## [0.10.0] - 2026-08-10
+
+### Added
+
+- **`cashu-voucher-pass` module** - maps a `SignedVoucher` to a `pass.json` store card
+  document for imani's own wallet. This is a schema-only adoption, not an Apple Wallet
+  integration: no certificates, no `.pkpass` bundles, no pass update web service.
+  - `VoucherPassMapper` - pure, I/O-free mapping function, with two `toPass` overloads
+    (the second taking `VoucherStatus` from the ledger to set `voided`)
+  - `PassJson`, `MerchantBranding` - the document model and render-time branding input
+  - Branding resolves at render time rather than from the signed voucher, so a merchant
+    changing their logo does not strand outstanding vouchers on stale branding
+  - The barcode carries `voucher:<uuid>`, a redemption identifier resolved against the
+    ledger - deliberately not the wallet's share QR, which carries bearer value
+
+---
+
+## [0.9.0] - 2026-08-10
+
+### Added
+
+- **Merchant issuerId `p` tag on voucher ledger events** (`cashu-voucher-nostr`)
+  - Kind-30078 events now carry a second `["p", issuerId]` tag alongside the publishing
+    wallet's identity key, so a merchant's own vouchers are relay-queryable via
+    `{kinds:[30078], "#p":[merchant]}`
+  - Skipped when it would duplicate the `issuerPublicKey` tag; added before signing
+  - Applies to both ISSUED and REDEEMED events
+  - Fixes gateway-minted vouchers (e.g. cash payments), where the publishing wallet and
+    the merchant differ, being invisible to merchant-scoped relay queries — the dashboard
+    previously had to scan a bounded global window and filter by content, which silently
+    drops events as volume grows
+
+- **`VoucherGoldenVectorTest`** (`cashu-voucher-domain`)
+  - Deterministic, byte-for-byte golden vector for cross-implementation verification of
+    VOUCHER issuer signatures, consumed by the TypeScript offline wallet
+    (`imani-apps/packages/offline-wallet`)
+  - Fixed voucherId, nonce, tag set and issuer keypair, so the vector is fully reproducible;
+    emits the NUT-10 secret string, the canonical signing bytes, their SHA-256, the BIP-340
+    Schnorr signature and the issuer's x-only public key
+  - Includes a tampered negative fixture — `face_value` altered after signing with the
+    signature left untouched — which must fail verification
+  - Asserts that its local replication of the private `getCanonicalBytesForSigning` still
+    matches the authoritative signature, so a change to the canonical form fails here rather
+    than silently desynchronising the Java and TypeScript implementations
+
+### Changed
+
+- Updated cashu-lib to 0.21.0 (NUT-11 P2PK secret validation). Validation is fail-closed:
+  a malformed P2PK lock is now rejected at parse time rather than accepted and misbehaving later.
+
 ---
 
 ## [0.8.0] - 2026-03-04

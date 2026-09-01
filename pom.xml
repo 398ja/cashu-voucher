@@ -7,7 +7,7 @@
 
     <groupId>xyz.tcheeric</groupId>
     <artifactId>cashu-voucher</artifactId>
-    <version>0.8.0</version>
+    <version>0.12.1</version>
     <packaging>pom</packaging>
 
     <name>Cashu Voucher</name>
@@ -18,6 +18,7 @@
         <module>cashu-voucher-domain</module>
         <module>cashu-voucher-nostr</module>
         <module>cashu-voucher-app</module>
+        <module>cashu-voucher-pass</module>
     </modules>
 
     <properties>
@@ -29,7 +30,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Dependency versions -->
-        <cashu-lib.version>0.16.0</cashu-lib.version>
+        <imani-bom.version>0.1.58</imani-bom.version>
         <bip-utils.version>2.0.0</bip-utils.version>
         <nostr-java.version>2.0.0</nostr-java.version>
         <bouncycastle.version>1.78</bouncycastle.version>
@@ -39,14 +40,13 @@
         <logback.version>1.5.3</logback.version>
 
         <!-- Test dependency versions -->
-        <junit.version>5.10.2</junit.version>
         <mockito.version>5.11.0</mockito.version>
         <assertj.version>3.25.3</assertj.version>
         <testcontainers.version>1.19.7</testcontainers.version>
 
         <!-- Plugin versions -->
         <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
-        <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
+        <maven-surefire-plugin.version>3.5.3</maven-surefire-plugin.version>
         <maven-jar-plugin.version>3.3.0</maven-jar-plugin.version>
         <maven-source-plugin.version>3.3.0</maven-source-plugin.version>
         <maven-javadoc-plugin.version>3.6.3</maven-javadoc-plugin.version>
@@ -55,6 +55,17 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- Cashu and platform versions come from the BOM, never pinned here. A local pin
+                 drifts silently: cashu-lib was pinned at four different versions across the
+                 repos that use it before this import existed. -->
+            <dependency>
+                <groupId>xyz.tcheeric</groupId>
+                <artifactId>imani-bom</artifactId>
+                <version>${imani-bom.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
             <!-- Internal modules -->
             <dependency>
                 <groupId>xyz.tcheeric</groupId>
@@ -71,23 +82,12 @@
                 <artifactId>cashu-voucher-app</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>xyz.tcheeric</groupId>
+                <artifactId>cashu-voucher-pass</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
-            <!-- Cashu dependencies -->
-            <dependency>
-                <groupId>xyz.tcheeric</groupId>
-                <artifactId>cashu-lib-entities</artifactId>
-                <version>${cashu-lib.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>xyz.tcheeric</groupId>
-                <artifactId>cashu-lib-crypto</artifactId>
-                <version>${cashu-lib.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>xyz.tcheeric</groupId>
-                <artifactId>cashu-lib-common</artifactId>
-                <version>${cashu-lib.version}</version>
-            </dependency>
 
             <!-- Crypto -->
             <dependency>
@@ -156,30 +156,6 @@
             </dependency>
 
             <!-- Testing -->
-            <dependency>
-                <groupId>org.junit.jupiter</groupId>
-                <artifactId>junit-jupiter</artifactId>
-                <version>${junit.version}</version>
-                <scope>test</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.junit.jupiter</groupId>
-                <artifactId>junit-jupiter-api</artifactId>
-                <version>${junit.version}</version>
-                <scope>test</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.junit.jupiter</groupId>
-                <artifactId>junit-jupiter-engine</artifactId>
-                <version>${junit.version}</version>
-                <scope>test</scope>
-            </dependency>
-            <dependency>
-                <groupId>org.junit.jupiter</groupId>
-                <artifactId>junit-jupiter-params</artifactId>
-                <version>${junit.version}</version>
-                <scope>test</scope>
-            </dependency>
             <dependency>
                 <groupId>org.mockito</groupId>
                 <artifactId>mockito-core</artifactId>
