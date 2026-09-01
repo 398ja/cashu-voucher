@@ -30,7 +30,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Dependency versions -->
-        <imani-bom.version>0.1.58</imani-bom.version>
+        <imani-bom.version>0.1.59</imani-bom.version>
         <bip-utils.version>2.0.0</bip-utils.version>
         <nostr-java.version>2.0.0</nostr-java.version>
         <bouncycastle.version>1.78</bouncycastle.version>
