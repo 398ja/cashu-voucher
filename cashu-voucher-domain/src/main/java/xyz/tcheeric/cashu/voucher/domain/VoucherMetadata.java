@@ -10,6 +10,11 @@ import java.util.List;
 /**
  * Reads voucher metadata from either kind that carries it.
  *
+ * <p>Public because the mint needs it. {@code VoucherSpendingCondition} used to reach for
+ * {@code instanceof VoucherSecret} and skip its checks when that failed, which meant a
+ * {@code P2PK_VOUCHER} had its expiry and issuer signature silently ignored. Reading through
+ * one accessor set removes the opportunity for that class of bug.
+ *
  * <p>Two NUT-10 kinds hold voucher metadata: {@code VOUCHER}, and {@code P2PK_VOUCHER} for a
  * voucher that is also P2PK-locked. They share the {@link VoucherTags} vocabulary, so almost
  * everything is read identically — but they do not share a Java supertype that declares the
@@ -24,16 +29,13 @@ import java.util.List;
  * implementations. Overloading them per kind would have duplicated the cryptography, which is
  * the last thing worth duplicating.
  */
-final class VoucherMetadata {
-
-    /** Where a {@code P2PK_VOUCHER} keeps its voucher id, since {@code data} holds the lock. */
-    private static final String VOUCHER_ID_TAG = "voucher_id";
+public final class VoucherMetadata {
 
     private VoucherMetadata() {
     }
 
     /** Whether this kind carries voucher metadata at all. */
-    static boolean isVoucherCarrying(@NonNull WellKnownSecret secret) {
+    public static boolean isVoucherCarrying(@NonNull WellKnownSecret secret) {
         WellKnownSecret.Kind kind = secret.getKind();
         return kind == WellKnownSecret.Kind.VOUCHER
                 || kind == WellKnownSecret.Kind.P2PK_VOUCHER;
@@ -45,27 +47,54 @@ final class VoucherMetadata {
      * <p>Used for log correlation, so it never throws: a secret too malformed to name is still
      * worth a log line saying so.
      */
-    static String voucherId(@NonNull WellKnownSecret secret) {
+    public static String voucherId(@NonNull WellKnownSecret secret) {
         if (secret.getKind() == WellKnownSecret.Kind.P2PK_VOUCHER) {
-            return tagValue(secret, VOUCHER_ID_TAG);
+            return tagValue(secret, VoucherTags.VOUCHER_ID);
         }
         byte[] data = secret.getData();
         return data == null ? null : new String(data, StandardCharsets.UTF_8);
     }
 
     /** The issuing merchant's identifier, or {@code null}. */
-    static String issuerId(@NonNull WellKnownSecret secret) {
+    public static String issuerId(@NonNull WellKnownSecret secret) {
         return tagValue(secret, VoucherTags.ISSUER);
     }
 
     /** The issuer's signature over the canonical bytes, or {@code null} when unsigned. */
-    static String issuerSignature(@NonNull WellKnownSecret secret) {
+    public static String issuerSignature(@NonNull WellKnownSecret secret) {
         return tagValue(secret, VoucherTags.ISSUER_SIG);
     }
 
     /** The issuer's public key, or {@code null} when unset. */
-    static String issuerPublicKey(@NonNull WellKnownSecret secret) {
+    public static String issuerPublicKey(@NonNull WellKnownSecret secret) {
         return tagValue(secret, VoucherTags.ISSUER_PUBKEY);
+    }
+
+    /** Expiry as a Unix timestamp in seconds, or {@code null} when the voucher does not expire. */
+    public static Long expiresAt(@NonNull WellKnownSecret secret) {
+        String raw = tagValue(secret, VoucherTags.EXPIRES_AT);
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            // A non-numeric expiry is malformed. Treating it as "no expiry" would make a
+            // corrupt tag into an immortal voucher, so report it as already expired instead
+            // and let the caller refuse.
+            return 0L;
+        }
+    }
+
+    /** Whether the expiry has passed. A voucher with no expiry never expires. */
+    public static boolean isExpired(@NonNull WellKnownSecret secret) {
+        Long expiresAt = expiresAt(secret);
+        return expiresAt != null && System.currentTimeMillis() / 1000 > expiresAt;
+    }
+
+    /** Whether both issuer fields are present. Presence only; says nothing about validity. */
+    public static boolean isSigned(@NonNull WellKnownSecret secret) {
+        return issuerSignature(secret) != null && issuerPublicKey(secret) != null;
     }
 
     /**
