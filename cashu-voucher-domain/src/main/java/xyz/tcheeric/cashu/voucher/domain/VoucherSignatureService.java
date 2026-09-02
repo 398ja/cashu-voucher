@@ -6,6 +6,7 @@ import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.VoucherCanonicalBytes.NumericTagForm;
 
@@ -85,7 +86,7 @@ public final class VoucherSignatureService {
      * @throws IllegalArgumentException if the private key format is invalid
      */
     public static byte[] sign(
-            @NonNull VoucherSecret secret,
+            @NonNull WellKnownSecret secret,
             @NonNull String issuerPrivateKeyHex
     ) {
         try {
@@ -109,8 +110,8 @@ public final class VoucherSignatureService {
 
             if (logger.isDebugEnabled()) {
                 logger.debug("Signed voucher {} (issuerId={}) with Schnorr signature length={}",
-                        secret.getVoucherId(),
-                        secret.getIssuerId(),
+                        VoucherMetadata.voucherId(secret),
+                        VoucherMetadata.issuerId(secret),
                         signature.length);
             }
 
@@ -129,12 +130,12 @@ public final class VoucherSignatureService {
      * @param secret the voucher secret with signature and public key tags set
      * @return true if the signature is valid, false otherwise
      */
-    public static boolean verify(@NonNull VoucherSecret secret) {
-        String signatureHex = secret.getIssuerSignature();
-        String publicKeyHex = secret.getIssuerPublicKey();
+    public static boolean verify(@NonNull WellKnownSecret secret) {
+        String signatureHex = VoucherMetadata.issuerSignature(secret);
+        String publicKeyHex = VoucherMetadata.issuerPublicKey(secret);
 
         if (signatureHex == null || publicKeyHex == null) {
-            logger.warn("Cannot verify unsigned voucher {}", secret.getVoucherId());
+            logger.warn("Cannot verify unsigned voucher {}", VoucherMetadata.voucherId(secret));
             return false;
         }
 
@@ -143,7 +144,7 @@ public final class VoucherSignatureService {
             return verify(secret, signature, publicKeyHex);
         } catch (Exception e) {
             logger.warn("Signature verification failed for voucher {}: {}",
-                    secret.getVoucherId(), e.getMessage());
+                    VoucherMetadata.voucherId(secret), e.getMessage());
             return false;
         }
     }
@@ -160,14 +161,14 @@ public final class VoucherSignatureService {
      * @return true if the signature is valid, false otherwise
      */
     public static boolean verify(
-            @NonNull VoucherSecret secret,
+            @NonNull WellKnownSecret secret,
             @NonNull byte[] signature,
             @NonNull String issuerPublicKeyHex
     ) {
         try {
             if (signature.length != SCHNORR_SIGNATURE_LENGTH) {
                 logger.warn("Invalid signature length for voucher {}: expected {} bytes, got {}",
-                        secret.getVoucherId(), SCHNORR_SIGNATURE_LENGTH, signature.length);
+                        VoucherMetadata.voucherId(secret), SCHNORR_SIGNATURE_LENGTH, signature.length);
                 return false;
             }
 
@@ -198,14 +199,14 @@ public final class VoucherSignatureService {
                 if (valid) {
                     logger.info("voucher_signature_legacy_canonical voucher_id={} issuer_id={} "
                                     + "reason=pre_fractional_tag_fix",
-                            secret.getVoucherId(), secret.getIssuerId());
+                            VoucherMetadata.voucherId(secret), VoucherMetadata.issuerId(secret));
                 }
             }
 
             if (logger.isDebugEnabled()) {
                 logger.debug("Verified voucher {} (issuerId={}): {}",
-                        secret.getVoucherId(),
-                        secret.getIssuerId(),
+                        VoucherMetadata.voucherId(secret),
+                        VoucherMetadata.issuerId(secret),
                         valid ? "VALID" : "INVALID");
             }
 
@@ -213,7 +214,7 @@ public final class VoucherSignatureService {
 
         } catch (Exception e) {
             logger.warn("Signature verification failed for voucher {}: {}",
-                    secret.getVoucherId(), e.getMessage());
+                    VoucherMetadata.voucherId(secret), e.getMessage());
             return false;
         }
     }
@@ -245,7 +246,7 @@ public final class VoucherSignatureService {
         return new SignedVoucher(secret);
     }
 
-    private static byte[] getCanonicalBytesForSigning(VoucherSecret secret) {
+    private static byte[] getCanonicalBytesForSigning(WellKnownSecret secret) {
         return VoucherCanonicalBytes.of(secret);
     }
 

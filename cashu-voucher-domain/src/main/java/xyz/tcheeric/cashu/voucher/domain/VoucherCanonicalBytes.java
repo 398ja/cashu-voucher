@@ -16,9 +16,21 @@ import java.nio.charset.StandardCharsets;
  * shared with every verifier, including the offline TypeScript wallet, so anything that needs
  * to reproduce them must be able to call the one implementation instead of copying it.
  *
- * <p>The form is {@code ["VOUCHER", "data_hex", "nonce", [[tag, value...], ...]]}, matching
+ * <p>The form is {@code [kind, "data_hex", "nonce", [[tag, value...], ...]]}, matching
  * {@code WellKnownSecretSerializer}, with {@code issuer_sig} and {@code issuer_pubkey} omitted
  * because they are only added after signing.
+ *
+ * <h2>The kind is read from the secret</h2>
+ *
+ * <p>It used to be the literal {@code "VOUCHER"}. Two kinds now carry voucher metadata —
+ * {@code VOUCHER} and {@code P2PK_VOUCHER}, the latter being a voucher that is also
+ * P2PK-locked — and the signature has to commit to which one it is. A fixed string would let a
+ * signature made for an unlocked voucher verify against a locked one carrying the same
+ * metadata, and vice versa, so the kind would not be covered by what the issuer signed.
+ *
+ * <p>This does not change the bytes for a {@code VOUCHER} secret: the value read is the same
+ * string that was previously hardcoded, so every signature made under the old code still
+ * verifies.
  *
  * <h2>Why the tag key decides what is numeric</h2>
  *
@@ -39,10 +51,11 @@ public final class VoucherCanonicalBytes {
     /**
      * Renders the canonical signing bytes for a voucher secret.
      *
-     * @param secret the voucher secret to render
+     * @param secret the voucher secret to render; either a {@link VoucherSecret} or a
+     *               {@code P2PKVoucherSecret}
      * @return the bytes that are hashed and signed
      */
-    public static byte[] of(@NonNull VoucherSecret secret) {
+    public static byte[] of(@NonNull WellKnownSecret secret) {
         return of(secret, NumericTagForm.CURRENT);
     }
 
@@ -66,10 +79,13 @@ public final class VoucherCanonicalBytes {
      * @param secret      the voucher secret to render
      * @param numericForm the rendering of numeric tag values
      * @return the bytes that are hashed and signed
+     * @throws IllegalArgumentException if the secret's kind carries no voucher metadata
      */
-    public static byte[] of(@NonNull VoucherSecret secret, @NonNull NumericTagForm numericForm) {
+    public static byte[] of(@NonNull WellKnownSecret secret, @NonNull NumericTagForm numericForm) {
+        requireVoucherCarryingKind(secret);
+
         StringBuilder sb = new StringBuilder();
-        sb.append("[\"").append(WellKnownSecret.Kind.VOUCHER.name()).append("\",\"");
+        sb.append("[\"").append(secret.getKind().name()).append("\",\"");
         sb.append(Hex.toHexString(secret.getData()));
         sb.append("\",\"");
         sb.append(secret.getNonce() != null ? secret.getNonce() : "");
@@ -89,6 +105,21 @@ public final class VoucherCanonicalBytes {
         sb.append("]]");
 
         return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Refuses a kind that carries no voucher metadata.
+     *
+     * <p>Signing an arbitrary secret with an issuer key would produce a signature that means
+     * nothing but looks like an issuer's attestation. Failing here keeps the mistake at the
+     * call site rather than turning it into a credential.
+     */
+    private static void requireVoucherCarryingKind(WellKnownSecret secret) {
+        WellKnownSecret.Kind kind = secret.getKind();
+        if (kind != WellKnownSecret.Kind.VOUCHER && kind != WellKnownSecret.Kind.P2PK_VOUCHER) {
+            throw new IllegalArgumentException(
+                    "canonical voucher bytes require a VOUCHER or P2PK_VOUCHER secret, got " + kind);
+        }
     }
 
     private static void appendTag(StringBuilder sb, WellKnownSecret.Tag tag, NumericTagForm numericForm) {

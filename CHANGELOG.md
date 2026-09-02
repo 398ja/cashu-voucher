@@ -7,7 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [0.13.0] - 2026-09-02
+
+### Added
+
+- **Signing and verification for the `P2PK_VOUCHER` kind** (cashu-lib), a voucher that is also
+  P2PK-locked.
+
+  `VoucherCanonicalBytes` now reads the kind from the secret instead of appending the literal
+  `"VOUCHER"`. The signature has to commit to which kind it was made for: with a fixed string,
+  a signature over an unlocked voucher would verify against a locked one carrying the same
+  metadata, so whether a witness is required would not be covered by what the issuer signed.
+
+  **Existing signatures are unaffected.** For a `VOUCHER` secret the value now read is the
+  string that was previously hardcoded, so the bytes are identical - confirmed against the
+  golden vector, whose signing hash stays
+  `d640f94fa4633aeb0089be77df012a754a399315bd808acd7325d31e29a75751`. No compatibility window
+  was needed.
+
+  `VoucherCanonicalBytes` and `VoucherSignatureService` widen from `VoucherSecret` to
+  `WellKnownSecret`; they only ever read `getData`/`getNonce`/`getTags`, all declared there, so
+  the cryptography stays one implementation rather than being overloaded per kind. Canonical
+  bytes now refuse a kind that carries no voucher metadata, since signing an arbitrary secret
+  with an issuer key would produce something meaningless that looks like an attestation.
+
+  New public `VoucherMetadata` reads voucher fields from either kind. The two disagree about
+  one field - a `VOUCHER` keeps its id in `data`, a `P2PK_VOUCHER` in a tag, because `data`
+  holds the spending key - and this is the single place that knows it.
+
 
 ## [0.12.1] - 2026-08-29
 
