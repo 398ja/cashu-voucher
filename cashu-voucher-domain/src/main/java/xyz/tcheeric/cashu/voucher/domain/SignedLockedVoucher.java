@@ -102,11 +102,18 @@ public final class SignedLockedVoucher {
     }
 
     /**
-     * Signed, unexpired, and locked.
+     * Signed and unexpired.
      *
-     * <p>Deliberately the same three-part reading as {@link SignedVoucher#isValid()} plus
-     * the lock, so a caller cannot get a "valid" locked voucher that is not actually
-     * locked.
+     * <p>The lock is NOT re-checked here, and does not need to be: the
+     * constructor refuses a secret with no spending key, so an instance of this
+     * type is locked by construction. Saying "plus the lock" here would read as
+     * a runtime check that does not exist, and invite someone to delete the
+     * constructor guard believing this covered it.
+     *
+     * <p>What this does NOT establish is that the SPENDER holds the key. That
+     * is the mint's job, verified against the witness at spend time. A caller
+     * treating {@code isValid()} as "safe to accept as payment" would be
+     * reading it as proof of ownership rather than proof of issuance.
      */
     public boolean isValid() {
         return verify() && !isExpired();

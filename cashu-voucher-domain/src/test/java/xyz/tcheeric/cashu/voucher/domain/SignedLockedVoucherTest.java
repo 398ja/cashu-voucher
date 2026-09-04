@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import xyz.tcheeric.cashu.common.nut11.P2PKVoucherSecret;
+import xyz.tcheeric.cashu.common.util.SecretUtil;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 
 import java.util.UUID;
@@ -137,6 +138,46 @@ class SignedLockedVoucherTest {
             assertThat(lockedVoucher.getSecret().getIssuerId()).isEqualTo("test-issuer");
             assertThat(lockedVoucher.getSecret().getUnit()).isEqualTo("sat");
             assertThat(lockedVoucher.getSecret().getFaceValue()).isEqualTo(5000L);
+        }
+
+        /**
+         * equals/hashCode compare {@code secret.toString()}, which returns the
+         * CACHED wire string when the secret was parsed rather than built. A
+         * mutator that forgot to discard that cache would leave two different
+         * vouchers comparing equal — and these are money objects, so "equal"
+         * decides deduplication.
+         *
+         * <p>Sound today because every mutator routes through {@code setTag},
+         * which calls {@code forgetWireString}. Pinned here because that
+         * invariant lives in a different repository from the equals() that
+         * depends on it.
+         *
+         * <p>Mutates a signed voucher and re-reads it rather than comparing two
+         * independently signed ones: Schnorr signing is randomised, so two
+         * signatures over identical content differ, and equality between
+         * separately-signed vouchers is neither expected nor meaningful.
+         */
+        @Test
+        @DisplayName("mutating a voucher changes its identity, cached wire string or not")
+        void mutationBreaksEquality() {
+            SignedLockedVoucher voucher = signed(SPENDING_KEY);
+            // Parse it back, so the secret HAS a cached wire string. A secret
+            // that was built rather than parsed has none, so toString() always
+            // re-encodes and the cache is never exercised.
+            voucher = new SignedLockedVoucher(
+                    (P2PKVoucherSecret) SecretUtil.toSecret(voucher.getSecret().toString()));
+            String before = voucher.getSecret().toString();
+            int hashBefore = voucher.hashCode();
+
+            voucher.getSecret().setFaceValue(9_999L);
+
+            assertThat(voucher.getSecret().toString())
+                    .as("a stale wire string would hide the new face value")
+                    .isNotEqualTo(before);
+            assertThat(voucher.hashCode())
+                    .as("...and a set keyed on it would silently collapse the two")
+                    .isNotEqualTo(hashBefore);
+            assertThat(voucher.getSecret().getFaceValue()).isEqualTo(9_999L);
         }
 
         @Test
