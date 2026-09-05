@@ -41,7 +41,11 @@ import java.util.Optional;
  *
  * <h3>Usage Example</h3>
  * <pre>
- * MerchantVerificationService service = new MerchantVerificationService(ledgerPort);
+ * // The issuer registry is required: with an empty one no issuer key is trusted, so every
+ * // voucher verifies as untrusted. That is the honest answer, not a bug — configure it.
+ * Map&lt;String, String&gt; keys = Map.of("corner-cafe", issuerPubkeyHex);
+ * IssuerKeyRegistry issuers = issuerId -&gt; Optional.ofNullable(keys.get(issuerId));
+ * MerchantVerificationService service = new MerchantVerificationService(ledgerPort, issuers);
  *
  * // Parse token to get signed voucher (implementation specific)
  * SignedVoucher voucher = parseToken(token);
