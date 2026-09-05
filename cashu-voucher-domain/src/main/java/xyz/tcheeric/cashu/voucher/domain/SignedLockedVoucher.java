@@ -1,6 +1,7 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
 import lombok.NonNull;
+import xyz.tcheeric.cashu.common.PublicKey;
 import org.bouncycastle.util.encoders.Hex;
 import xyz.tcheeric.cashu.common.nut11.P2PKVoucherSecret;
 
@@ -58,6 +59,19 @@ public final class SignedLockedVoucher {
             // anyone — the failure mode of the plain kind, wearing this one's
             // name.
             throw new IllegalArgumentException("P2PKVoucherSecret must carry a spending key");
+        }
+        // ...and the lock has to be a key, not merely some bytes (audit L-31). Length alone was
+        // checked, so a 5-byte lock or an off-curve point produced an instance that satisfied
+        // every invariant this class advertises and then failed at witness-verification time,
+        // far from the voucher that caused it. Constructing a PublicKey performs the length,
+        // prefix and on-curve checks; the result is discarded because what matters is that it
+        // could be built.
+        try {
+            PublicKey.fromBytes(secret.getData());
+        } catch (RuntimeException notAKey) {
+            throw new IllegalArgumentException(
+                    "P2PKVoucherSecret spending key is not a valid secp256k1 public key",
+                    notAKey);
         }
         this.secret = secret;
     }
