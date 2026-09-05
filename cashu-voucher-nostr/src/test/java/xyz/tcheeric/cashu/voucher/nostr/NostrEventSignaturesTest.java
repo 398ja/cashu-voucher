@@ -78,12 +78,72 @@ class NostrEventSignaturesTest {
     }
 
     @Test
+    @DisplayName("ATTACK: id copied verbatim, contents replaced")
+    void liftedTripleOnForgedContentIsRejected() {
+        Identity issuer = Identity.generateRandomIdentity();
+        GenericEvent genuine = signedBy(issuer);
+
+        // The real attack does NOT call update(): it keeps the genuine id, so the signature is a
+        // genuine issuer signature over that exact message and verifies on its own terms. Only
+        // recomputing the id from the contents catches it.
+        GenericEvent forged = new GenericEvent();
+        forged.setPubKey(issuer.getPublicKey());
+        forged.setKind(30078);
+        forged.setContent("status flipped back to ACTIVE");
+        forged.setCreatedAt(genuine.getCreatedAt() + 1000);
+        forged.setId(genuine.getId());
+        forged.setSignature(genuine.getSignature());
+
+        assertThat(NostrEventSignatures.verify(forged))
+                .as("a valid (id, sig, pubkey) triple must not authenticate different contents")
+                .isFalse();
+    }
+
+    @Test
+    @DisplayName("ATTACK: status tag flipped under a genuine signature")
+    void forgedStatusTagUnderLiftedSignatureIsRejected() {
+        Identity issuer = Identity.generateRandomIdentity();
+
+        // A genuine issuer event marking the voucher REDEEMED, as published on the public relay.
+        GenericEvent genuine = new GenericEvent();
+        genuine.setPubKey(issuer.getPublicKey());
+        genuine.setKind(30078);
+        genuine.setContent("ledger event");
+        genuine.setCreatedAt(System.currentTimeMillis() / 1000);
+        genuine.addTag(nostr.event.BaseTag.create("d", "voucher:v1"));
+        genuine.addTag(nostr.event.BaseTag.create("status", "REDEEMED"));
+        genuine.update();
+        genuine.setSignature(issuer.sign(genuine));
+        assertThat(NostrEventSignatures.verify(genuine)).isTrue();
+
+        // The attacker keeps the whole authentic triple and rewrites only the status tag, then
+        // bumps created_at so the read path's max(createdAt) picks the forgery.
+        GenericEvent forged = new GenericEvent();
+        forged.setPubKey(issuer.getPublicKey());
+        forged.setKind(30078);
+        forged.setContent(genuine.getContent());
+        forged.setCreatedAt(genuine.getCreatedAt() + 3600);
+        forged.addTag(nostr.event.BaseTag.create("d", "voucher:v1"));
+        forged.addTag(nostr.event.BaseTag.create("status", "ACTIVE"));
+        forged.setId(genuine.getId());
+        forged.setSignature(genuine.getSignature());
+
+        assertThat(NostrEventSignatures.verify(forged))
+                .as("flipping REDEEMED back to ACTIVE under a lifted signature is the double-spend")
+                .isFalse();
+    }
+
+    @Test
     @DisplayName("an event signed over different content does not verify")
     void tamperedIdIsRejected() {
         Identity issuer = Identity.generateRandomIdentity();
         GenericEvent genuine = signedBy(issuer);
 
-        // Reuse a valid signature on an event with a different id.
+        // Reuse a valid signature on an event with a different id. Note this variant is the
+        // WEAK one: recomputing the id here gives the tampered event a correct id for its new
+        // content, so the lifted signature fails on the signature check alone. It discriminates
+        // nothing about id binding — see liftedTripleOnForgedContentIsRejected for the attack
+        // that keeps the original id, which is the one that mattered.
         GenericEvent tampered = new GenericEvent();
         tampered.setPubKey(issuer.getPublicKey());
         tampered.setKind(30078);
