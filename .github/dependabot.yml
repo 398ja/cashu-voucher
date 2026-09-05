@@ -1,0 +1,32 @@
+version: 2
+
+# Added per the 2026-09-05 security audit (L-34). This repository had no dependency update
+# automation, and its pom pinned the oldest dependencies in the ecosystem: logback 1.5.3 against
+# 1.5.25 elsewhere, jackson 2.17.0 against 2.20.0, nostr-java 2.0.0 against 2.3.1.
+
+registries:
+  maven-releases:
+    type: maven-repository
+    url: https://maven.398ja.xyz/releases
+    username: ${{secrets.MVN_USER}}
+    password: ${{secrets.MVN_PASSWORD}}
+  maven-snapshots:
+    type: maven-repository
+    url: https://maven.398ja.xyz/snapshots
+    username: ${{secrets.MVN_USER}}
+    password: ${{secrets.MVN_PASSWORD}}
+
+updates:
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    registries:
+      - maven-releases
+      - maven-snapshots
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
