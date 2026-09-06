@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.0] - 2026-09-06
+
+Security remediation from the 2026-09-05 audit, plus the defects an adversarial review of that
+remediation found. Minor rather than patch: `MerchantVerificationService` requires an issuer key
+registry, and events that previously verified are now rejected.
+
+### Security
+
+- **Voucher signatures are verified against a registered issuer key** (audit H-12). A signature
+  that checks out under the key the voucher itself carries proves only that somebody signed;
+  nothing tied that key to the claimed `issuer_id`, so anyone could issue a voucher under their
+  own key with any issuer id and have it pronounced valid. An empty registry trusts nobody, which
+  is the honest answer with nothing to check against.
+
+- **Ledger events are signed on publish and verified on read** (audit H-13). The read path took
+  the voucher status straight from whatever a relay returned, with no signature or author check,
+  and the publish path wrote events unsigned. A relay is untrusted transport, so a hostile one
+  could flip a REDEEMED voucher back to ACTIVE and let it be redeemed twice.
+
+- **The event signature is bound to the event contents.** `verify()` checked that the signature
+  matched the id but never recomputed the id, and I documented that as an acceptable limit on the
+  grounds that callers also pin the author. That was wrong: pinning the author says who signed,
+  recomputing the id says what they signed, and only the second was missing. The ledger is public,
+  so an attacker copies a genuine issuer event's `(id, sig, pubkey)` verbatim onto an event whose
+  status tag says ACTIVE with `created_at` bumped, every field the check inspected is authentic,
+  and the newest authentic event wins. That is exactly the double-spend the previous fix claimed
+  to close. The accompanying test called `update()` on the tampered event, giving it a correct id
+  for its new content, so it passed for a reason unrelated to the property it claimed to test.
+
+- **The legacy canonical window is bounded and the lock key shape is validated** (audit M-29,
+  L-31).
+
+### Changed
+
+- **Requires `cashu-lib` 0.30.0**, via `imani-bom` 0.1.63.
+
 ## [0.13.0] - 2026-09-02
 
 ### Added
