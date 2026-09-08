@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.1] - 2026-09-07
+
+### Fixed
+- A `p` tag that is not a pubkey no longer costs the whole ledger event. A NIP-01
+  `p` tag is a fixed-size 32-byte pubkey and relays enforce it: strfry rejects the
+  ENTIRE event with `unexpected size for fixed-size tag: p` when it is anything
+  else. `issuerId` is a merchant identifier, not necessarily a key — a
+  gateway-minted voucher carries the literal string `unknown` — and it was written
+  straight into a `p` tag.
+
+  The failure was invisible from the writer's side, because a relay's rejection is
+  not an error response: the gateway logged `voucher_ledger publish_success` while
+  the relay stored nothing, leaving the ledger the double-spend check reads
+  silently empty. Both `p` tags are now emitted only for a 64-hex value; the
+  merchant tag still works for the case it was added for, since a merchant
+  issuerId that IS a pubkey is exactly when relay filtering by merchant is
+  possible.
+
+  An existing test asserted the broken behaviour — `ISSUER_ID` is `test-merchant`
+  and the suite required it to appear as a `p` tag — so the tests were green on the
+  defect. That test now uses a pubkey issuerId, and a new one pins the opposite.
+
 ## [0.14.0] - 2026-09-06
 
 Security remediation from the 2026-09-05 audit, plus the defects an adversarial review of that
