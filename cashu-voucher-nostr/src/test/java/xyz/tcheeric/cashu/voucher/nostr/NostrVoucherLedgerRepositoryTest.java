@@ -97,7 +97,7 @@ class NostrVoucherLedgerRepositoryTest {
         @DisplayName("Should reject null issuer public key")
         void shouldRejectNullIssuerPublicKey() {
             assertThrows(NullPointerException.class, () -> {
-                new NostrVoucherLedgerRepository(clientAdapter, null);
+                new NostrVoucherLedgerRepository(clientAdapter, (PublicKey) null);
             });
         }
 

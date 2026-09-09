@@ -7,7 +7,7 @@
 
     <groupId>xyz.tcheeric</groupId>
     <artifactId>cashu-voucher</artifactId>
-    <version>0.13.0</version>
+    <version>0.14.1</version>
     <packaging>pom</packaging>
 
     <name>Cashu Voucher</name>
@@ -30,14 +30,14 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Dependency versions -->
-        <imani-bom.version>0.1.60</imani-bom.version>
+        <imani-bom.version>0.1.63</imani-bom.version>
         <bip-utils.version>2.0.0</bip-utils.version>
         <nostr-java.version>2.0.0</nostr-java.version>
         <bouncycastle.version>1.78</bouncycastle.version>
-        <jackson.version>2.17.0</jackson.version>
+        <jackson.version>2.19.4</jackson.version>
         <lombok.version>1.18.30</lombok.version>
         <slf4j.version>2.0.12</slf4j.version>
-        <logback.version>1.5.3</logback.version>
+        <logback.version>1.5.25</logback.version>
 
         <!-- Test dependency versions -->
         <mockito.version>5.11.0</mockito.version>

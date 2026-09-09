@@ -8,6 +8,7 @@ import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherRequest;
 import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherResponse;
 import xyz.tcheeric.cashu.common.nut18.VoucherPaymentPayload;
 import xyz.tcheeric.cashu.common.nut18.VoucherPaymentRequest;
+import xyz.tcheeric.cashu.voucher.app.ports.IssuerKeyRegistry;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherLedgerPort;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
@@ -40,7 +41,11 @@ import java.util.Optional;
  *
  * <h3>Usage Example</h3>
  * <pre>
- * MerchantVerificationService service = new MerchantVerificationService(ledgerPort);
+ * // The issuer registry is required: with an empty one no issuer key is trusted, so every
+ * // voucher verifies as untrusted. That is the honest answer, not a bug — configure it.
+ * Map&lt;String, String&gt; keys = Map.of("corner-cafe", issuerPubkeyHex);
+ * IssuerKeyRegistry issuers = issuerId -&gt; Optional.ofNullable(keys.get(issuerId));
+ * MerchantVerificationService service = new MerchantVerificationService(ledgerPort, issuers);
  *
  * // Parse token to get signed voucher (implementation specific)
  * SignedVoucher voucher = parseToken(token);
@@ -65,15 +70,44 @@ import java.util.Optional;
 public class MerchantVerificationService {
 
     private final VoucherLedgerPort ledgerPort;
+    private final IssuerKeyRegistry issuerKeyRegistry;
 
     /**
      * Constructs a MerchantVerificationService.
      *
-     * @param ledgerPort the port for ledger operations (must not be null)
+     * @param ledgerPort        the port for ledger operations (must not be null)
+     * @param issuerKeyRegistry resolves the key an issuer is known to sign with (must not be null)
      */
-    public MerchantVerificationService(@NonNull VoucherLedgerPort ledgerPort) {
+    public MerchantVerificationService(@NonNull VoucherLedgerPort ledgerPort,
+                                       @NonNull IssuerKeyRegistry issuerKeyRegistry) {
         this.ledgerPort = ledgerPort;
+        this.issuerKeyRegistry = issuerKeyRegistry;
         log.info("MerchantVerificationService initialized");
+    }
+
+    /**
+     * Errors from binding the voucher's signing key to the expected issuer.
+     *
+     * <p>An unknown issuer is a failure, not a pass: absence of a registered key means there is
+     * nothing to check the signature against, which is exactly the case an attacker wants.
+     */
+    private List<String> issuerKeyMismatches(SignedVoucher voucher, String expectedIssuerId) {
+        Optional<String> registeredKey = issuerKeyRegistry.publicKeyFor(expectedIssuerId);
+        if (registeredKey.isEmpty()) {
+            log.warn("No registered signing key for issuer {}", expectedIssuerId);
+            return List.of("No registered signing key for issuer '" + expectedIssuerId
+                    + "'; cannot verify the issuer signature");
+        }
+        String presentedKey = voucher.getIssuerPublicKey();
+        if (presentedKey == null || presentedKey.isBlank()) {
+            return List.of("Voucher carries no issuer public key");
+        }
+        if (!presentedKey.equalsIgnoreCase(registeredKey.get())) {
+            log.warn("Voucher for issuer {} was signed by an unregistered key", expectedIssuerId);
+            return List.of("Voucher was signed by a key that is not registered to issuer '"
+                    + expectedIssuerId + "'");
+        }
+        return List.of();
     }
 
     /**
@@ -164,6 +198,16 @@ public class MerchantVerificationService {
             errors.add(error);
             log.warn("Issuer mismatch: {}", error);
         }
+
+        // Bind the signing key to the issuer before the signature is worth anything.
+        //
+        // VoucherValidator.validate() below checks the signature against the issuer_pubkey tag
+        // carried by the voucher itself, so on its own it proves only that whoever built the
+        // voucher held the matching private key. An attacker generates a keypair, claims the
+        // merchant's issuer id, signs with their own key, and passes. Requiring the key to be
+        // the one this merchant is registered to sign with is what turns the signature into
+        // evidence.
+        errors.addAll(issuerKeyMismatches(voucher, expectedIssuerId));
 
         // Validate using domain validator (signature + expiry + business rules)
         VoucherValidator.ValidationResult domainResult = VoucherValidator.validate(voucher);

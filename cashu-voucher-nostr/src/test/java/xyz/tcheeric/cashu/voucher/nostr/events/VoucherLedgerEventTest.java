@@ -29,6 +29,9 @@ class VoucherLedgerEventTest {
     private static final String TEST_ISSUER_PRIVKEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     private static final String TEST_ISSUER_PUBKEY = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
     private static final String ISSUER_ID = "test-merchant";
+    /** A merchant issuerId that IS a pubkey, which is the case where the p tag is valid. */
+    private static final String MERCHANT_PUBKEY =
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     private static final String UNIT = "sat";
     private static final long FACE_VALUE = 5000L;
 
@@ -374,17 +377,37 @@ class VoucherLedgerEventTest {
         }
 
         @Test
-        @DisplayName("Should add a p tag with the merchant issuerId for relay filtering")
+        @DisplayName("Should add a p tag with the merchant issuerId when it is a pubkey")
         void shouldAddPTagWithMerchantIssuerId() {
-            SignedVoucher voucher = createTestVoucher("voucher-merchant-ptag");
+            SignedVoucher voucher = createTestVoucher("voucher-merchant-ptag", null, MERCHANT_PUBKEY);
 
             VoucherLedgerEvent event = VoucherLedgerEvent.fromVoucher(voucher, VoucherStatus.ISSUED);
 
             // Both the publishing-wallet key AND the merchant issuerId must be present as
             // p tags so the merchant dashboard can filter the relay by merchant (#p==issuerId).
             List<String> pTags = getAllTagValues(event, "p");
-            assertTrue(pTags.contains(ISSUER_ID), "expected merchant issuerId p tag, got: " + pTags);
+            assertTrue(pTags.contains(MERCHANT_PUBKEY), "expected merchant issuerId p tag, got: " + pTags);
             assertTrue(pTags.contains(TEST_ISSUER_PUBKEY), "expected issuerPublicKey p tag, got: " + pTags);
+        }
+
+        @Test
+        @DisplayName("Should NOT emit a p tag for an issuerId that is not a pubkey")
+        void shouldNotEmitNonPubkeyPTag() {
+            // ISSUER_ID is "test-merchant", and a real gateway sends the literal
+            // "unknown" for a voucher it minted itself.
+            SignedVoucher voucher = createTestVoucher("voucher-nonkey-ptag");
+
+            VoucherLedgerEvent event = VoucherLedgerEvent.fromVoucher(voucher, VoucherStatus.ISSUED);
+
+            // A NIP-01 p tag is a fixed-size 32-byte pubkey. strfry rejects the WHOLE
+            // event with "unexpected size for fixed-size tag: p" when it is not — and
+            // the writer is not told, so the publish looked successful while the relay
+            // stored nothing. This test previously asserted the opposite.
+            List<String> pTags = getAllTagValues(event, "p");
+            assertFalse(pTags.contains(ISSUER_ID),
+                    "a non-pubkey p tag costs the entire event at the relay, got: " + pTags);
+            assertTrue(pTags.contains(TEST_ISSUER_PUBKEY),
+                    "the publishing key must still be tagged, got: " + pTags);
         }
 
         @Test
@@ -474,10 +497,20 @@ class VoucherLedgerEventTest {
      * Helper method to create a test voucher with expiry.
      */
     private SignedVoucher createTestVoucher(String voucherId, Long expiresAt) {
+        return createTestVoucher(voucherId, expiresAt, ISSUER_ID);
+    }
+
+    /**
+     * Helper method to create a test voucher with an explicit issuerId.
+     *
+     * <p>The issuerId matters to the {@code p} tags: a relay only accepts one
+     * that is a 32-byte pubkey.
+     */
+    private SignedVoucher createTestVoucher(String voucherId, Long expiresAt, String issuerId) {
         java.util.UUID id = java.util.UUID.nameUUIDFromBytes(voucherId.getBytes());
         VoucherSecret secret = VoucherSecret.builder()
                 .voucherId(id)
-                .issuerId(ISSUER_ID)
+                .issuerId(issuerId)
                 .unit(UNIT)
                 .faceValue(FACE_VALUE)
                 .expiresAt(expiresAt)

@@ -8,6 +8,26 @@
 
 ---
 
+> **Corrections, 2026-09-05.** The ecosystem-wide security audit
+> (`imani-docs/security/cashu-security-compliance-audit-2026-09-05.md`) found three claims below
+> that did not hold:
+>
+> 1. **"verify signatures locally"** (line ~386, as mitigation for relay trust) was not
+>    implemented. `NostrVoucherLedgerRepository` published ledger events *unsigned*, with a TODO
+>    where the signing belonged, and read them back with no signature or author check at all.
+>    Since the online double-spend check reads its answer from those events, a hostile relay could
+>    flip a REDEEMED voucher back to ACTIVE. Now implemented.
+> 2. **NIP-17 + NIP-44 for backups** was marked complete; backups actually used the deprecated
+>    NIP-04 (kind 4). Still outstanding.
+> 3. **Offline verification** was not noted as a forgery risk. It checked the issuer signature
+>    against the public key carried by the voucher itself, so any keypair could produce a voucher
+>    claiming any issuer id. Fixed by binding the issuer id to a registered key.
+>
+> A checklist entry of the form "[x] X is correct" is only as good as the test behind it. Items 1
+> and 3 had no test.
+
+---
+
 ## Executive Summary
 
 This code review covers the complete Cashu Voucher implementation across all three modules (domain, app, nostr). The codebase demonstrates **excellent quality** with strong adherence to best practices, comprehensive testing, and thorough documentation.

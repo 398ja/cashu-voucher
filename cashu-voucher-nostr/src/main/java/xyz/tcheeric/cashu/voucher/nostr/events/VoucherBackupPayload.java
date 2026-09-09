@@ -98,6 +98,22 @@ public class VoucherBackupPayload {
     /**
      * Event kind for encrypted direct messages (NIP-04/NIP-44).
      */
+    /**
+     * Event kind 4.
+     *
+     * <p>Audit M-30 read this as "backups use deprecated NIP-04". The <em>encryption</em> is
+     * NIP-44 (see {@code nostr.crypto.nip44.EncryptedPayloads} below): XChaCha20-Poly1305 with a
+     * conversation key, not NIP-04's unauthenticated AES-CBC. What is NIP-04 here is only the
+     * event kind, because kind 4 is the number NIP-04 defined and nostr-java exposes it under
+     * that name.
+     *
+     * <p>Kept at 4 deliberately. These are self-addressed backups, so no other client has to
+     * interpret them, and existing backups are readable only at this kind: changing it would
+     * strand every backup already published. NIP-17's kind 14 with gift wrapping would hide the
+     * metadata that kind 4 exposes (that these two keys exchanged something, and when), which is
+     * worth doing, but it is a migration with a compatibility window rather than a constant
+     * change.
+     */
     public static final int KIND_ENCRYPTED_DM = Kinds.ENCRYPTED_DIRECT_MESSAGE;
 
     /**

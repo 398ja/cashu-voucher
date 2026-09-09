@@ -14,6 +14,7 @@ import xyz.tcheeric.cashu.common.nut18.VoucherTransport;
 import xyz.tcheeric.cashu.voucher.app.dto.GeneratePaymentRequestDTO;
 import xyz.tcheeric.cashu.voucher.app.dto.GeneratePaymentRequestResponse;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherBackupPort;
+import xyz.tcheeric.cashu.voucher.app.adapter.MapIssuerKeyRegistry;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherLedgerPort;
 
 import java.util.List;
@@ -49,7 +50,8 @@ class NUT18VIntegrationTest {
     @BeforeEach
     void setUp() {
         voucherService = new VoucherService(ledgerPort, backupPort, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY);
-        verificationService = new MerchantVerificationService(ledgerPort);
+        verificationService = new MerchantVerificationService(ledgerPort,
+                MapIssuerKeyRegistry.of(ISSUER_ID, TEST_PUBLIC_KEY));
     }
 
     @Nested

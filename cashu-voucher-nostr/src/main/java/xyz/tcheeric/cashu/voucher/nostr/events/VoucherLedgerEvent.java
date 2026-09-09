@@ -90,6 +90,22 @@ public class VoucherLedgerEvent extends GenericEvent {
      */
     public static final String D_TAG_PREFIX = "voucher:";
 
+    /**
+     * A NIP-01 {@code p} tag is a fixed-size 32-byte pubkey, and relays enforce
+     * that: strfry rejects the WHOLE event with "unexpected size for fixed-size
+     * tag: p" if it is anything else. Not the tag — the event.
+     *
+     * <p>That is how a real ledger publish was lost. {@code issuerId} is a
+     * merchant identifier, not necessarily a key, and for a gateway-minted
+     * voucher it arrives as the literal {@code "unknown"}. The publish then
+     * reported success on our side (the relay's rejection is not an error
+     * response to the writer) while the relay stored nothing, so the ledger was
+     * silently empty.
+     */
+    private static boolean isPubkey(String value) {
+        return value != null && value.matches("[0-9a-fA-F]{64}");
+    }
+
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -169,7 +185,7 @@ public class VoucherLedgerEvent extends GenericEvent {
         }
 
         // Add 'p' tag with issuer public key to enable relay-level filtering
-        if (voucherPayload.getIssuerPublicKey() != null && !voucherPayload.getIssuerPublicKey().isBlank()) {
+        if (isPubkey(voucherPayload.getIssuerPublicKey())) {
             event.addTag(BaseTag.create("p", voucherPayload.getIssuerPublicKey()));
         }
 
@@ -178,9 +194,10 @@ public class VoucherLedgerEvent extends GenericEvent {
         // publishing-wallet key above: for gateway-minted vouchers (e.g. cash payments) the
         // signing/publishing key differs from the nominal merchant issuerId, so without this
         // tag the merchant's own vouchers are not relay-queryable. Skipped when it would
-        // duplicate the issuerPublicKey tag (self-issued vouchers).
+        // duplicate the issuerPublicKey tag (self-issued vouchers), and skipped when it is
+        // not a pubkey at all — see isPubkey: a non-key issuerId here cost the event.
         String issuerId = voucherPayload.getIssuerId();
-        if (issuerId != null && !issuerId.isBlank()
+        if (isPubkey(issuerId)
                 && !issuerId.equals(voucherPayload.getIssuerPublicKey())) {
             event.addTag(BaseTag.create("p", issuerId));
         }

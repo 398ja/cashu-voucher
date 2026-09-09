@@ -3,6 +3,7 @@ package xyz.tcheeric.cashu.voucher.nostr;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import nostr.base.PublicKey;
+import nostr.id.Identity;
 import nostr.event.impl.GenericEvent;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherLedgerPort;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
@@ -87,6 +88,16 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
 
     private final NostrClientAdapter nostrClient;
     private final PublicKey issuerPublicKey;
+
+    /**
+     * The identity events are signed with, when the deployment supplies one.
+     *
+     * <p>Absent means this repository can read the ledger but not write to it. That is a real
+     * configuration (a merchant that only verifies), and it is strictly better than the previous
+     * behaviour of publishing unsigned events: an unsigned event is rejected by real relays, so
+     * the publish silently achieved nothing while reporting success.
+     */
+    private final Identity issuerIdentity;
     private final long publishTimeoutMs;
     private final long queryTimeoutMs;
 
@@ -105,6 +116,19 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
     }
 
     /**
+     * Creates a repository that can sign and publish.
+     *
+     * @param nostrClient    the Nostr client adapter (must not be null)
+     * @param issuerIdentity the identity to sign ledger events with (must not be null)
+     */
+    public NostrVoucherLedgerRepository(
+            @NonNull NostrClientAdapter nostrClient,
+            @NonNull Identity issuerIdentity
+    ) {
+        this(nostrClient, issuerIdentity.getPublicKey(), issuerIdentity, 5000L, 5000L);
+    }
+
+    /**
      * Creates a NostrVoucherLedgerRepository with custom timeouts.
      *
      * @param nostrClient the Nostr client adapter (must not be null)
@@ -119,6 +143,25 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
             long publishTimeoutMs,
             long queryTimeoutMs
     ) {
+        this(nostrClient, issuerPublicKey, null, publishTimeoutMs, queryTimeoutMs);
+    }
+
+    /**
+     * Creates a repository with an explicit signing identity and custom timeouts.
+     *
+     * @param nostrClient      the Nostr client adapter (must not be null)
+     * @param issuerPublicKey  the issuer public key events are expected to carry
+     * @param issuerIdentity   the identity to sign with, or null for a read-only repository
+     * @param publishTimeoutMs timeout for publishing events in milliseconds
+     * @param queryTimeoutMs   timeout for querying events in milliseconds
+     */
+    public NostrVoucherLedgerRepository(
+            @NonNull NostrClientAdapter nostrClient,
+            @NonNull PublicKey issuerPublicKey,
+            Identity issuerIdentity,
+            long publishTimeoutMs,
+            long queryTimeoutMs
+    ) {
         if (publishTimeoutMs <= 0) {
             throw new IllegalArgumentException("Publish timeout must be positive");
         }
@@ -128,11 +171,44 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
 
         this.nostrClient = nostrClient;
         this.issuerPublicKey = issuerPublicKey;
+        this.issuerIdentity = issuerIdentity;
         this.publishTimeoutMs = publishTimeoutMs;
         this.queryTimeoutMs = queryTimeoutMs;
 
         log.info("NostrVoucherLedgerRepository initialized: issuer={}, publishTimeout={}ms, queryTimeout={}ms",
                 issuerPublicKey.toBech32String(), publishTimeoutMs, queryTimeoutMs);
+    }
+
+    /**
+     * Whether an event genuinely comes from the issuer this repository trusts.
+     *
+     * <p>Two questions, both required. Is the author the issuer? And is the event signed by that
+     * author? Checking only the {@code pubkey} field would be worthless, because the field is
+     * just as writable by an attacker as the rest of the event.
+     */
+    private boolean isFromIssuer(GenericEvent event) {
+        if (event == null || event.getPubKey() == null) {
+            return false;
+        }
+        if (!issuerPublicKey.toString().equalsIgnoreCase(event.getPubKey().toString())) {
+            log.debug("Discarding ledger event from unexpected author {}", event.getPubKey());
+            return false;
+        }
+        if (event.getSignature() == null) {
+            log.debug("Discarding unsigned ledger event {}", event.getId());
+            return false;
+        }
+        try {
+            boolean valid = NostrEventSignatures.verify(event);
+            if (!valid) {
+                log.warn("Discarding ledger event {} with an invalid signature", event.getId());
+            }
+            return valid;
+        } catch (RuntimeException e) {
+            log.warn("Discarding ledger event {}: signature could not be checked: {}",
+                    event.getId(), e.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -179,9 +255,16 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
                     : VoucherLedgerEvent.fromVoucher(voucher, status, isSplit);
             event.setPubKey(issuerPublicKey);
 
-            // TODO: Sign event with issuer's private key
-            // This will be implemented when we add key management
-            // For now, the event is published unsigned (will fail on real relays)
+            // Sign before publishing. An unsigned ledger event is not evidence of anything: a
+            // reader cannot tell it from one an attacker wrote, and the status it carries is what
+            // the double-spend check depends on. Publishing unsigned also silently achieved
+            // nothing, since real relays reject such events while this method reported success.
+            if (issuerIdentity == null) {
+                throw new VoucherNostrException(
+                        "This repository has no signing identity, so it cannot publish to the "
+                                + "ledger. Construct it with an Identity to enable publishing.");
+            }
+            event.setSignature(issuerIdentity.sign(event));
 
             boolean success = nostrClient.publishEvent(event, publishTimeoutMs);
 
@@ -242,8 +325,23 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
                 return Optional.empty();
             }
 
+            // Only events that are actually from the issuer count. A relay is an untrusted
+            // transport: anyone can publish a kind-30078 event with d=voucher:<id>, and the
+            // status carried by these events is exactly what the online double-spend check
+            // relies on. Without this filter a hostile or compromised relay could flip a
+            // REDEEMED voucher back to ACTIVE and enable a second redemption.
+            List<GenericEvent> authentic = events.stream()
+                    .filter(this::isFromIssuer)
+                    .toList();
+
+            if (authentic.isEmpty()) {
+                log.warn("Voucher events found but none carried a valid issuer signature: "
+                        + "voucherId={}, discarded={}", voucherId, events.size());
+                return Optional.empty();
+            }
+
             // Find most recent event
-            GenericEvent mostRecent = events.stream()
+            GenericEvent mostRecent = authentic.stream()
                     .max((e1, e2) -> Long.compare(e1.getCreatedAt(), e2.getCreatedAt()))
                     .orElseThrow();
 
@@ -356,8 +454,23 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
                 return Optional.empty();
             }
 
+            // Only events that are actually from the issuer count. A relay is an untrusted
+            // transport: anyone can publish a kind-30078 event with d=voucher:<id>, and the
+            // status carried by these events is exactly what the online double-spend check
+            // relies on. Without this filter a hostile or compromised relay could flip a
+            // REDEEMED voucher back to ACTIVE and enable a second redemption.
+            List<GenericEvent> authentic = events.stream()
+                    .filter(this::isFromIssuer)
+                    .toList();
+
+            if (authentic.isEmpty()) {
+                log.warn("Voucher events found but none carried a valid issuer signature: "
+                        + "voucherId={}, discarded={}", voucherId, events.size());
+                return Optional.empty();
+            }
+
             // Find most recent event
-            GenericEvent mostRecent = events.stream()
+            GenericEvent mostRecent = authentic.stream()
                     .max((e1, e2) -> Long.compare(e1.getCreatedAt(), e2.getCreatedAt()))
                     .orElseThrow();
 

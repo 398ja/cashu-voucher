@@ -12,6 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherRequest;
 import xyz.tcheeric.cashu.voucher.app.dto.RedeemVoucherResponse;
+import xyz.tcheeric.cashu.voucher.app.adapter.MapIssuerKeyRegistry;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherLedgerPort;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import xyz.tcheeric.cashu.voucher.domain.BackingStrategy;
@@ -55,7 +56,12 @@ class MerchantVerificationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MerchantVerificationService(ledgerPort);
+        // The registry is what binds ISSUER_ID to the key these tests sign with. Verification
+        // checks the signature against the registered key rather than the one the voucher
+        // carries, so a voucher signed by any other key is rejected however well-formed it is
+        // (audit H-14).
+        service = new MerchantVerificationService(ledgerPort,
+                MapIssuerKeyRegistry.of(ISSUER_ID, ISSUER_PUBKEY));
     }
 
     /**
@@ -125,11 +131,12 @@ class MerchantVerificationServiceTest {
     class ConstructorTests {
 
         @Test
-        @DisplayName("should create service with valid ledger port")
+        @DisplayName("should create service with valid ledger port and issuer registry")
         void shouldCreateServiceWithValidLedgerPort() {
             // When / Then
             assertThatNoException().isThrownBy(() ->
-                    new MerchantVerificationService(ledgerPort)
+                    new MerchantVerificationService(ledgerPort,
+                            MapIssuerKeyRegistry.of(ISSUER_ID, ISSUER_PUBKEY))
             );
         }
 
@@ -138,7 +145,18 @@ class MerchantVerificationServiceTest {
         void shouldRejectNullLedgerPort() {
             // When / Then
             assertThatThrownBy(() ->
-                    new MerchantVerificationService(null)
+                    new MerchantVerificationService(null,
+                            MapIssuerKeyRegistry.of(ISSUER_ID, ISSUER_PUBKEY))
+            ).isInstanceOf(NullPointerException.class);
+        }
+
+        @Test
+        @DisplayName("should reject a null issuer key registry")
+        void shouldRejectNullIssuerKeyRegistry() {
+            // Without a registry there is no trusted key to check a signature against, so the
+            // service would be back to trusting whatever key the voucher carried.
+            assertThatThrownBy(() ->
+                    new MerchantVerificationService(ledgerPort, null)
             ).isInstanceOf(NullPointerException.class);
         }
     }
