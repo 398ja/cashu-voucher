@@ -172,7 +172,7 @@ if (result.isValid()) {
 
 - [GitHub Repository](https://github.com/cashu-voucher/cashu-voucher)
 - [Project README](../README.md)
-- [AGENTS.md](../AGENTS.md) - Development guidelines
+- [CLAUDE.md](../CLAUDE.md) - Development guidelines
 - [Cashu Protocol](https://github.com/cashubtc/nuts)
 - [Nostr Protocol](https://github.com/nostr-protocol/nips)
 

@@ -328,7 +328,7 @@ Contributions are welcome! Please:
 5. Follow [Conventional Commits](https://www.conventionalcommits.org/)
 6. Submit a pull request
 
-See [AGENTS.md](./AGENTS.md) for detailed development guidelines.
+See [CLAUDE.md](./CLAUDE.md) for detailed development guidelines.
 
 ## Acknowledgments
 
