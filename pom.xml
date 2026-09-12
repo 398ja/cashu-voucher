@@ -30,14 +30,20 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Dependency versions -->
-        <imani-bom.version>0.1.73</imani-bom.version>
+        <imani-bom.version>0.1.75</imani-bom.version>
         <bip-utils.version>2.0.0</bip-utils.version>
         <nostr-java.version>2.0.0</nostr-java.version>
         <bouncycastle.version>1.78</bouncycastle.version>
         <jackson.version>2.19.4</jackson.version>
         <lombok.version>1.18.30</lombok.version>
         <slf4j.version>2.0.12</slf4j.version>
-        <logback.version>1.5.25</logback.version>
+        <!-- Deliberately NOT set: Spring Boot (via imani-bom) versions
+             logback, and versions BOTH halves of the pair together. Pinning
+             logback-classic here while logback-core came from Boot split them
+             (1.5.25 against 1.5.34), which throws
+             NoSuchMethodError: LoggerContext.initCollisionMaps() on context
+             load. It bit payment-adapter and gateway-core the same way.
+        <logback.version>1.5.25</logback.version> -->
 
         <!-- Test dependency versions -->
         <mockito.version>5.11.0</mockito.version>
@@ -149,11 +155,8 @@
                 <artifactId>slf4j-api</artifactId>
                 <version>${slf4j.version}</version>
             </dependency>
-            <dependency>
-                <groupId>ch.qos.logback</groupId>
-                <artifactId>logback-classic</artifactId>
-                <version>${logback.version}</version>
-            </dependency>
+            <!-- logback-classic/-core are versioned together by the Spring
+                 Boot import; see the logback.version note above. -->
 
             <!-- Testing -->
             <dependency>
