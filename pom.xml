@@ -33,7 +33,14 @@
         <imani-bom.version>0.1.75</imani-bom.version>
         <bip-utils.version>2.0.0</bip-utils.version>
         <nostr-java.version>2.0.0</nostr-java.version>
-        <bouncycastle.version>1.78</bouncycastle.version>
+        <!-- Deliberately NOT set: imani-bom manages both bcprov artifacts at
+             1.84. This local property pinned bcprov-jdk18on to 1.78 and, being
+             a local pin on a BOM-managed artifact, silently won, so
+             CVE-2025-14813 stayed live on the classpath of an ecash codebase
+             while the sibling bcprov-jdk15to18 had already moved to 1.84. A
+             pin that quietly outranks the BOM is the failure this whole
+             exercise keeps turning up.
+        <bouncycastle.version>1.78</bouncycastle.version> -->
         <jackson.version>2.19.4</jackson.version>
         <lombok.version>1.18.30</lombok.version>
         <slf4j.version>2.0.12</slf4j.version>
@@ -95,12 +102,8 @@
             </dependency>
 
 
-            <!-- Crypto -->
-            <dependency>
-                <groupId>org.bouncycastle</groupId>
-                <artifactId>bcprov-jdk18on</artifactId>
-                <version>${bouncycastle.version}</version>
-            </dependency>
+            <!-- Crypto: bcprov-jdk18on and -jdk15to18 are both managed by
+                 imani-bom; see the bouncycastle.version note above. -->
 
             <!-- Nostr Java 2.0 -->
             <dependency>
