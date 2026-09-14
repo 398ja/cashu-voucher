@@ -17,11 +17,16 @@ dozens of findings that are all test data, which is how a security check gets ig
 real leak then arrives in the noise.
 
 Deliberately matched by VALUE SHAPE rather than by path. An earlier draft of this file allowlisted
-`src/test/java/**` wholesale, and a check confirmed that a literal AWS key
-(AKIAIOSFODNN7EXAMPLE) committed to a test file went undetected. Exempting a location exempts
-every rule there; exempting a shape exempts only strings that look like Cashu crypto material.
-A real AWS key, GitHub token or PEM block in a test file still fails the job, because none of
-them is 64 characters of hex.
+`src/test/java/**` wholesale, and a check confirmed that a real-looking GitHub token committed to
+a test file then went undetected. Exempting a location exempts every rule there; exempting a
+shape exempts only strings that look like Cashu crypto material. A real AWS key, GitHub token or
+PEM block in a test file still fails the job, because none of them is 64 characters of hex.
+
+Verified on this repository by planting all three in a test file and committing: `ghp_...` and a
+realistic `AKIA...` key are both reported, while a keyset id is not. Note that gitleaks' upstream
+default already allowlists the documentation placeholder AKIAIOSFODNN7EXAMPLE specifically, so
+that literal string is NOT a useful probe -- an earlier version of this comment cited it as one,
+which was wrong. Probe with a random-looking key instead.
 """
 
 regexes = [
@@ -39,6 +44,13 @@ regexes = [
     # construction. A token is public by design -- it is what a wallet hands to a payee -- so it
     # is not a credential in the sense this scan is looking for.
     '''^cashu[AB][A-Za-z0-9_-]+$''',
+    # A NUT-02 keyset id. The spec is explicit that these are "derived from public data": a
+    # keyset id is the hash of the mint's own public keys, published at GET /v1/keys and quoted
+    # in every proof a wallet holds. It identifies which public keyset a proof belongs to, so it
+    # is not a credential in any sense -- but it is short hex, so generic-api-key fires on it.
+    # V1 is 8 bytes with a "00" version byte; V2 is 33 bytes with a "01" version byte.
+    '''^00[0-9a-f]{14}$''',
+    '''^01[0-9a-f]{64}$''',
     # A UUID. Test fixtures are full of them -- keyset row ids, mint ids, saga ids -- and they
     # are identifiers rather than credentials.
     '''^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$''',
