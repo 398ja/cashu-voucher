@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.2] - 2026-09-14
+
+### Security
+
+- **CI now scans a resolved SBOM, and runs secret scanning.** Part of closing P8 in the
+  2026-09-13 AppSec review: across the estate, no repository ran SAST, SCA or secret scanning.
+  Scanning a *resolved* SBOM matters because scanning the declared tree misses everything that
+  arrives transitively.
+
+### Fixed
+
+- **The SBOM guard passed when it could not read the component count.** A guard that cannot tell
+  "zero components" from "could not count" reports success for both, which is the failure mode
+  the guard exists to prevent. It now fails.
+- **A false claim in the gitleaks config.** The allowlist comment described behaviour the config
+  did not have: gitleaks matches the extracted secret, not the surrounding line, so a
+  value-based entry looks like it works and silently does not. NUT-02 keyset ids in tests are
+  allowlisted deliberately — the spec is explicit that they are public.
+
 ## [0.14.1] - 2026-09-07
 
 ### Fixed
