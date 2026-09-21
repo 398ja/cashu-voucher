@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.3] - 2026-09-21
+
+### Added
+
+- **`IssuanceWarrant`: the scheme that makes "stall X issued this" checkable.** A voucher carries
+  one signature and it is the issuing *service's*, so an issuer claim about a stall is an assertion
+  nobody can verify against that stall. A warrant binds a digest *covering the face value* to
+  evidence produced outside the issuing service's trust boundary.
+
+  A warrant attests a **sale**, not a voucher. One Sell action mints an unknown number of coupons
+  (quantity x server-side auto-split), so no voucher id exists at signing time. Verification is
+  therefore a **ceiling** test: each part must be at or under the warranted total, not equal to it.
+  Cross-currency portability is refused explicitly, because a digest that omits the unit lets an
+  XAF 2500 warrant authorise a EUR 2500 coupon worth roughly six times as much.
+
+### Fixed
+
+- **0.14.2 was already published when the warrant was added under it.** The warrant commit changed
+  no pom, so new bytes landed on a released coordinate; remote metadata reports 0.14.2 as the
+  current release. Local builds stayed green because `~/.m2` held a rebuilt 0.14.2 shadowing the
+  published artefact. 0.14.3 is a fresh coordinate so 0.14.2 is never reused with different bytes.
+
+  Requires cashu-lib 0.30.4 and travels with it per ADR 0006: the library carries the tag, this
+  project gives the tag meaning, and a consumer taking one without the other has either a tag
+  nothing can verify or a verifier with nowhere to read from.
+
 ## [0.14.2] - 2026-09-14
 
 ### Security
