@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.4] - 2026-09-22
+
+### Security
+
+- **BouncyCastle 1.84 -> 1.85 for CVE-2026-8763 (CRITICAL)**, via `imani-bom` 0.1.97.
+  X.509 Name Constraints can be bypassed with a trailing dot in an `rfc822Name` or URI, so a
+  certificate can assert a name the constraint exists to forbid.
+
+  Both `bcprov` artifacts take one property in the BOM, which is what keeps them from
+  drifting apart: the previous BouncyCastle CVE survived a fix because the declared version
+  and the transitively-resolved version disagreed. Verified here with `dependency:tree`
+  rather than by reading the pom.
+
+### Changed
+
+- `imani-bom` 0.1.87 -> 0.1.97.
+
 ## [0.14.3] - 2026-09-21
 
 ### Added
