@@ -7,7 +7,7 @@
 
     <groupId>xyz.tcheeric</groupId>
     <artifactId>cashu-voucher</artifactId>
-    <version>0.14.4</version>
+    <version>0.14.5</version>
     <packaging>pom</packaging>
 
     <name>Cashu Voucher</name>
@@ -30,7 +30,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Dependency versions -->
-        <imani-bom.version>0.1.97</imani-bom.version>
+        <imani-bom.version>0.1.102</imani-bom.version>
         <bip-utils.version>2.0.0</bip-utils.version>
         <nostr-java.version>2.0.0</nostr-java.version>
         <!-- Deliberately NOT set: imani-bom manages both bcprov artifacts at
@@ -41,7 +41,14 @@
              pin that quietly outranks the BOM is the failure this whole
              exercise keeps turning up.
         <bouncycastle.version>1.78</bouncycastle.version> -->
-        <jackson.version>2.19.4</jackson.version>
+        <jackson.version>2.21.5</jackson.version>
+        <!-- jackson-annotations is versioned SEPARATELY from the rest of the Jackson family:
+             the 2.21.x line publishes annotations as plain 2.21, and 2.21.5 does not exist.
+             Driving it from ${jackson.version} therefore breaks the build the moment the
+             databind patch level moves, which is exactly what happened bumping to 2.21.5 for
+             CVE-2026-54515. jackson-bom's own jackson.version.annotations property says the
+             same thing. -->
+        <jackson.annotations.version>2.21</jackson.annotations.version>
         <lombok.version>1.18.30</lombok.version>
         <slf4j.version>2.0.12</slf4j.version>
         <!-- Deliberately NOT set: Spring Boot (via imani-bom) versions
@@ -136,7 +143,7 @@
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
                 <artifactId>jackson-annotations</artifactId>
-                <version>${jackson.version}</version>
+                <version>${jackson.annotations.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.fasterxml.jackson.dataformat</groupId>

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.5] - 2026-09-23
+
+### Security
+
+- **jackson 2.19.4 -> 2.21.5**, closing **CVE-2026-54515**: case-insensitive deserialization
+  bypasses per-property `@JsonIgnoreProperties`, so a field the model declares as ignored can
+  be populated from input anyway. This project deserializes voucher and payment payloads that
+  originate outside it, which is exactly where that boundary is supposed to hold.
+
+  (The two sibling advisories, CVE-2026-59889 and GHSA-mhm7-754m-9p8w, affect >= 2.21.0 only
+  and never applied at 2.19.4. Fixed here regardless by landing on 2.21.5.)
+
+- `imani-bom` 0.1.97 -> 0.1.102, which carries the same jackson floor plus cashu-lib 0.30.6.
+
+### Fixed
+
+- **`jackson-annotations` no longer follows `${jackson.version}`.** Jackson versions that
+  artifact separately from the rest of the family: the 2.21.x line publishes annotations as
+  plain **2.21**, and 2.21.5 does not exist. Driving both from one property meant this build
+  broke the moment the databind patch level moved — which is what happened on this very bump.
+  It now has its own `jackson.annotations.version`, matching what `jackson-bom` itself does.
+
+### Notes for operators
+
+- No API change. Full suite passes on the new version.
+
+
 ## [0.14.4] - 2026-09-22
 
 ### Security
