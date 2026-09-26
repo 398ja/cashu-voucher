@@ -8,7 +8,6 @@ import lombok.ToString;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -133,9 +132,13 @@ public class NostrRelayConfig {
             "wss://relay.cashu.xyz"
     );
 
-    // Relay URLs
-    @Builder.Default
-    private final List<String> relayUrls = new ArrayList<>(CASHU_RELAYS);
+    /**
+     * Relay URLs. Deliberately not {@code @Builder.Default}: the builder below owns this field, and
+     * with the annotation Lombok's {@code build()} read a second, generated field that the
+     * hand-written builder methods never set, so every relay list given to the builder was replaced
+     * by {@link #CASHU_RELAYS} (cashu-voucher#44). The default is applied in the constructor.
+     */
+    private final List<String> relayUrls;
 
     // Connection settings
     @Builder.Default
@@ -178,13 +181,42 @@ public class NostrRelayConfig {
     private final int minimumRelays = 1;
 
     /**
-     * Custom builder to support adding relay URLs one at a time.
+     * The all-arguments constructor Lombok's builder calls, in field order. Written out so the
+     * relay list gets its default and a defensive copy: {@code null} means no relays were chosen
+     * and becomes {@link #CASHU_RELAYS}; an explicitly empty list stays empty, so
+     * {@link #validate()} refuses it instead of it being silently replaced.
+     */
+    NostrRelayConfig(List<String> relayUrls, long connectionTimeoutMs, int maxRetries,
+                     boolean exponentialBackoff, long publishTimeoutMs, long queryTimeoutMs,
+                     int batchSize, boolean healthCheckEnabled, long healthCheckIntervalMs,
+                     int maxConsecutiveFailures, boolean autoReconnect,
+                     boolean requireMinimumRelays, int minimumRelays) {
+        this.relayUrls = List.copyOf(relayUrls == null ? CASHU_RELAYS : relayUrls);
+        this.connectionTimeoutMs = connectionTimeoutMs;
+        this.maxRetries = maxRetries;
+        this.exponentialBackoff = exponentialBackoff;
+        this.publishTimeoutMs = publishTimeoutMs;
+        this.queryTimeoutMs = queryTimeoutMs;
+        this.batchSize = batchSize;
+        this.healthCheckEnabled = healthCheckEnabled;
+        this.healthCheckIntervalMs = healthCheckIntervalMs;
+        this.maxConsecutiveFailures = maxConsecutiveFailures;
+        this.autoReconnect = autoReconnect;
+        this.requireMinimumRelays = requireMinimumRelays;
+        this.minimumRelays = minimumRelays;
+    }
+
+    /**
+     * Builder that owns the relay list, so relays can be added one at a time or chosen from a
+     * preset. Until one of those is called the list is {@code null}, and the Cashu relays apply.
      */
     public static class NostrRelayConfigBuilder {
-        private List<String> relayUrls = new ArrayList<>();
+        private List<String> relayUrls;
 
         /**
-         * Adds a single relay URL to the configuration.
+         * Appends a relay URL to the relays chosen so far. On a fresh {@code builder()} nothing is
+         * chosen yet, so the first call replaces the default relays; after {@code toBuilder()} or a
+         * preset it adds to that list.
          *
          * @param relayUrl the WebSocket URL of the relay (must start with wss:// or ws://)
          * @return this builder for chaining
@@ -200,7 +232,8 @@ public class NostrRelayConfig {
         }
 
         /**
-         * Sets multiple relay URLs at once.
+         * Sets multiple relay URLs at once, replacing any chosen before. {@code null} leaves the
+         * current choice unchanged.
          *
          * @param relayUrls list of relay URLs
          * @return this builder for chaining
@@ -256,12 +289,12 @@ public class NostrRelayConfig {
     }
 
     /**
-     * Gets an unmodifiable copy of the relay URLs.
+     * Gets the relay URLs.
      *
      * @return unmodifiable list of relay URLs
      */
     public List<String> getRelayUrls() {
-        return Collections.unmodifiableList(new ArrayList<>(relayUrls));
+        return relayUrls;
     }
 
     /**

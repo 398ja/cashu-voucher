@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+## [0.14.6] - 2026-09-26
+
+### Fixed
+
+- **`NostrRelayConfig` keeps the relays it is given (#44).** `relayUrls` was `@Builder.Default`
+  while the builder also declared hand-written `relayUrl(...)`, `relayUrls(...)`,
+  `useWellKnownRelays()` and `useCashuRelays()`. Those wrote a plain builder field that Lombok's
+  generated `build()` never reads, so every configuration came back with the two Cashu relays
+  whatever was set, `validate()` only ever checked that default list, and `toBuilder()` lost a
+  custom one. `testConfig()` and `productionConfig(...)` were affected too. The builder now owns
+  the field: no relays chosen means `CASHU_RELAYS`, an explicitly empty list stays empty (so
+  `validate()` refuses it), and the built list is an immutable copy of the input.
+
+  Behaviour change: `builder().relayUrls(List.of())` used to yield the Cashu relays and now
+  yields no relays. `build()` does not validate, so a caller passing an empty list from its own
+  configuration should call `validate()`. `relayUrl(...)` appends to the relays chosen so far,
+  which after `toBuilder()` or a preset means adding to that list.
+
+  Consumers that worked around this, such as cashu-mint#407, can pass their relays through
+  `NostrRelayConfig` again once they are on this release.
+
 ## [0.14.5] - 2026-09-23
 
 ### Security
