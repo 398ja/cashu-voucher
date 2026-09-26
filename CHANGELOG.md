@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.6] - 2026-09-26
+
 ### Fixed
 
 - **`NostrRelayConfig` keeps the relays it is given (#44).** `relayUrls` was `@Builder.Default`
