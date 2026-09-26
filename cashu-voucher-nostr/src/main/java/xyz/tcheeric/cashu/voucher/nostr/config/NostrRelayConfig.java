@@ -214,7 +214,9 @@ public class NostrRelayConfig {
         private List<String> relayUrls;
 
         /**
-         * Adds a single relay URL to the configuration. The first one replaces the default relays.
+         * Appends a relay URL to the relays chosen so far. On a fresh {@code builder()} nothing is
+         * chosen yet, so the first call replaces the default relays; after {@code toBuilder()} or a
+         * preset it adds to that list.
          *
          * @param relayUrl the WebSocket URL of the relay (must start with wss:// or ws://)
          * @return this builder for chaining

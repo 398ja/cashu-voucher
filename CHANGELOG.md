@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the field: no relays chosen means `CASHU_RELAYS`, an explicitly empty list stays empty (so
   `validate()` refuses it), and the built list is an immutable copy of the input.
 
+  Behaviour change: `builder().relayUrls(List.of())` used to yield the Cashu relays and now
+  yields no relays. `build()` does not validate, so a caller passing an empty list from its own
+  configuration should call `validate()`. `relayUrl(...)` appends to the relays chosen so far,
+  which after `toBuilder()` or a preset means adding to that list.
+
   Consumers that worked around this, such as cashu-mint#407, can pass their relays through
   `NostrRelayConfig` again once they are on this release.
 

@@ -116,4 +116,69 @@ class NostrRelayConfigTest {
         assertThatThrownBy(() -> NostrRelayConfig.builder().relayUrl(" "))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    // The constructor the builder calls is written out by hand, so two same-typed parameters could
+    // be swapped and still compile. The longs and ints get distinct values. The four booleans are
+    // set in two patterns, TTFF and TFTF, so every pair of them differs in at least one: any swap
+    // shows up in some getter, through build() and through toBuilder().
+    @Test
+    void everySettingSurvivesBuildAndToBuilderInItsOwnField() {
+        boolean[][] booleanPatterns = {{true, true, false, false}, {true, false, true, false}};
+        for (boolean[] flags : booleanPatterns) {
+            NostrRelayConfig config = NostrRelayConfig.builder()
+                    .relayUrls(List.of("wss://a.example", "wss://b.example"))
+                    .connectionTimeoutMs(1001L)
+                    .maxRetries(7)
+                    .exponentialBackoff(flags[0])
+                    .publishTimeoutMs(1002L)
+                    .queryTimeoutMs(1003L)
+                    .batchSize(11)
+                    .healthCheckEnabled(flags[1])
+                    .healthCheckIntervalMs(1004L)
+                    .maxConsecutiveFailures(13)
+                    .autoReconnect(flags[2])
+                    .requireMinimumRelays(flags[3])
+                    .minimumRelays(2)
+                    .build();
+
+            for (NostrRelayConfig each : List.of(config, config.toBuilder().build())) {
+                assertThat(each.getRelayUrls()).containsExactly("wss://a.example", "wss://b.example");
+                assertThat(each.getConnectionTimeoutMs()).isEqualTo(1001L);
+                assertThat(each.getMaxRetries()).isEqualTo(7);
+                assertThat(each.isExponentialBackoff()).isEqualTo(flags[0]);
+                assertThat(each.getPublishTimeoutMs()).isEqualTo(1002L);
+                assertThat(each.getQueryTimeoutMs()).isEqualTo(1003L);
+                assertThat(each.getBatchSize()).isEqualTo(11);
+                assertThat(each.isHealthCheckEnabled()).isEqualTo(flags[1]);
+                assertThat(each.getHealthCheckIntervalMs()).isEqualTo(1004L);
+                assertThat(each.getMaxConsecutiveFailures()).isEqualTo(13);
+                assertThat(each.isAutoReconnect()).isEqualTo(flags[2]);
+                assertThat(each.isRequireMinimumRelays()).isEqualTo(flags[3]);
+                assertThat(each.getMinimumRelays()).isEqualTo(2);
+            }
+            assertThat(config.toBuilder().build()).isEqualTo(config);
+        }
+    }
+
+    // After toBuilder() the relays are already chosen, so relayUrl(...) appends to them rather than
+    // replacing them, as it does after a preset.
+    @Test
+    void relayUrlAppendsAfterToBuilderOrAPreset() {
+        assertThat(NostrRelayConfig.defaultConfig().toBuilder().relayUrl("wss://x.example").build()
+                .getRelayUrls())
+                .containsExactly("wss://relay.damus.io", "wss://relay.cashu.xyz", "wss://x.example");
+        assertThat(NostrRelayConfig.builder().useCashuRelays().relayUrl("wss://x.example").build()
+                .getRelayUrls())
+                .containsExactly("wss://relay.damus.io", "wss://relay.cashu.xyz", "wss://x.example");
+    }
+
+    // relayUrls(null) leaves the current choice alone: on a fresh builder the defaults still apply.
+    @Test
+    void relayUrlsNullLeavesTheChoiceUnchanged() {
+        assertThat(NostrRelayConfig.builder().relayUrls(null).build().getRelayUrls())
+                .isEqualTo(NostrRelayConfig.CASHU_RELAYS);
+        assertThat(NostrRelayConfig.builder().relayUrl("wss://a.example").relayUrls(null).build()
+                .getRelayUrls())
+                .containsExactly("wss://a.example");
+    }
 }
