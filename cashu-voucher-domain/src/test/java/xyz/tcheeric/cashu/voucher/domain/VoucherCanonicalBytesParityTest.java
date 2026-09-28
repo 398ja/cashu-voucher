@@ -22,19 +22,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *
  * <p>If this test fails, the wire format changed. That is a mint-visible change and every live
  * voucher's signature depends on it, so update the vector only alongside the mint — never to make
- * the build green.
+ * the build green. It last changed for cashu-voucher#46, which removed the nonce from the signed
+ * bytes: the vector is the previous one with {@code "0123456789abcdef",} taken out, and nothing
+ * else.
  */
 class VoucherCanonicalBytesParityTest {
 
     private static final String EXPECTED_CANONICAL_HEX =
             "5b225032504b5f564f5543484552222c2230326161616161616161616161616161616161616161616161"
                     + "616161616161616161616161616161616161616161616161616161616161616161616161616161616122"
-                    + "2c2230313233343536373839616263646566222c5b5b226e5f73696773222c2231225d2c5b2273696766"
-                    + "6c6167222c225349475f494e50555453225d2c5b22766f75636865725f6964222c22762d313233225d2c"
-                    + "5b22697373756572222c22696d616e69225d2c5b22756e6974222c22736174225d2c5b22666163655f76"
-                    + "616c7565222c313030305d2c5b22657870697265735f6174222c323030303030303030305d2c5b226d65"
-                    + "726368616e745f6d65746164617461222c22636166c3a9205c2271756f7465645c225c6e6c696e655c74"
-                    + "7365705c5c6261636b225d5d5d";
+                    + "2c5b5b226e5f73696773222c2231225d2c5b22736967666c6167222c225349475f494e50555453225d2c"
+                    + "5b22766f75636865725f6964222c22762d313233225d2c5b22697373756572222c22696d616e69225d2c"
+                    + "5b22756e6974222c22736174225d2c5b22666163655f76616c7565222c313030305d2c5b226578706972"
+                    + "65735f6174222c323030303030303030305d2c5b226d65726368616e745f6d65746164617461222c2263"
+                    + "6166c3a9205c2271756f7465645c225c6e6c696e655c747365705c5c6261636b225d5d5d";
 
     @Test
     void rendersTheVectorTheTypeScriptVerifierExpects() {

@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: the issuer signature no longer covers the per-proof nonce (#46).** The canonical
+  bytes are now `[kind, data_hex, [tags]]`. Every swap gives each output a fresh nonce, so a
+  signature over it broke whenever a voucher was received or split, and only its issuer could
+  re-sign it. Any holder can now move a voucher without the issuer's key. Vouchers signed under
+  the old bytes no longer verify: this is a deliberate clean break for a stack that has not run in
+  production. See `docs/explanation/nonce-free-issuer-signature.md`.
+
+### Removed
+
+- **BREAKING: the truncated-number legacy form.** `VoucherCanonicalBytes.NumericTagForm`, the
+  `of(secret, form)` overload, and the `cashu.voucher.legacy-canonical.enabled` /
+  `CASHU_VOUCHER_LEGACY_CANONICAL` switch are gone. There is one canonical form and one
+  verification path.
+
 ## [0.14.6] - 2026-09-26
 
 ### Fixed

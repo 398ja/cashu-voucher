@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
-import xyz.tcheeric.cashu.voucher.domain.VoucherCanonicalBytes.NumericTagForm;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -48,34 +47,6 @@ import java.security.SecureRandom;
  * @see <a href="https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki">BIP-340 Schnorr Signatures</a>
  */
 public final class VoucherSignatureService {
-
-    /**
-     * Whether pre-fractional-fix vouchers still verify.
-     *
-     * <p>The legacy canonical form truncates numeric tags, so a signature made over it verifies
-     * for both the fractional value and its truncation: whoever presents the voucher picks which
-     * one a consumer reads (audit M-29). That is malleability over the field that decides a
-     * voucher's worth, tolerated only while vouchers signed that way are still live.
-     *
-     * <p>Set {@code cashu.voucher.legacy-canonical.enabled=false} (or
-     * {@code CASHU_VOUCHER_LEGACY_CANONICAL=false}) once the last such voucher has expired. The
-     * WARN logged on every acceptance is how an operator knows whether any remain.
-     */
-    private static final boolean LEGACY_CANONICAL_ENABLED = legacyCanonicalEnabled();
-
-    private static boolean legacyCanonicalEnabled() {
-        String property = System.getProperty("cashu.voucher.legacy-canonical.enabled");
-        if (property != null && !property.isBlank()) {
-            return Boolean.parseBoolean(property);
-        }
-        String env = System.getenv("CASHU_VOUCHER_LEGACY_CANONICAL");
-        if (env != null && !env.isBlank()) {
-            return Boolean.parseBoolean(env);
-        }
-        // Default on: turning it off invalidates vouchers that are still legitimately
-        // redeemable, which only the operator can decide.
-        return true;
-    }
 
     private static final Logger logger = LoggerFactory.getLogger(VoucherSignatureService.class);
 
@@ -213,32 +184,6 @@ public final class VoucherSignatureService {
             byte[] messageHash = sha256(canonicalBytes);
 
             boolean valid = Schnorr.verify(messageHash, publicKeyBytes, signature);
-
-            // Compatibility window. Every voucher issued before the fractional-tag fix
-            // was signed over bytes where any Double was truncated by longValue(), so a
-            // ratio of 0.056 signed as 0. Those vouchers are live and cannot be re-signed
-            // — the issuer's key is not here — so they must still verify until they
-            // expire. Only reached when the current form has already failed, so a voucher
-            // signed the new way never pays for this.
-            if (!valid && LEGACY_CANONICAL_ENABLED) {
-                byte[] legacyHash = sha256(
-                        VoucherCanonicalBytes.of(secret, NumericTagForm.TRUNCATED_TO_LONG));
-                valid = Schnorr.verify(legacyHash, publicKeyBytes, signature);
-                if (valid) {
-                    // WARN, not INFO (audit M-29). Accepting the legacy form means one signature
-                    // verifies over two different tag readings: a ratio of 0.056 and a ratio of
-                    // 0, since the legacy bytes truncate. Whoever presents the voucher chooses
-                    // which reading a consumer sees, so this is signature malleability over a
-                    // value that decides what the voucher is worth. It is accepted only because
-                    // the alternative is invalidating live vouchers whose issuer key is not
-                    // available to re-sign them, and every acceptance should be visible so an
-                    // operator can tell when the window can close.
-                    logger.warn("voucher_signature_legacy_canonical voucher_id={} issuer_id={} "
-                                    + "reason=pre_fractional_tag_fix "
-                                    + "note=numeric_tags_are_malleable_under_this_form",
-                            VoucherMetadata.voucherId(secret), VoucherMetadata.issuerId(secret));
-                }
-            }
 
             if (logger.isDebugEnabled()) {
                 logger.debug("Verified voucher {} (issuerId={}): {}",

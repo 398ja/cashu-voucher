@@ -16,9 +16,12 @@ import java.nio.charset.StandardCharsets;
  * shared with every verifier, including the offline TypeScript wallet, so anything that needs
  * to reproduce them must be able to call the one implementation instead of copying it.
  *
- * <p>The form is {@code [kind, "data_hex", "nonce", [[tag, value...], ...]]}, matching
- * {@code WellKnownSecretSerializer}, with {@code issuer_sig} and {@code issuer_pubkey} omitted
- * because they are only added after signing.
+ * <p>The form is {@code [kind, "data_hex", [[tag, value...], ...]]}: the voucher, not the proof.
+ * {@code issuer_sig} and {@code issuer_pubkey} are omitted because they are only added after
+ * signing, and the NUT-10 {@code nonce} is omitted because it identifies one PROOF of the voucher.
+ * Every swap gives each output a fresh nonce, so a signature over it would break whenever the
+ * voucher is received or split, and only the issuer could ever move it (cashu-voucher#46, see
+ * {@code docs/explanation/nonce-free-issuer-signature.md}).
  *
  * <h2>The kind is read from the secret</h2>
  *
@@ -54,41 +57,14 @@ public final class VoucherCanonicalBytes {
      * @param secret the voucher secret to render; either a {@link VoucherSecret} or a
      *               {@code P2PKVoucherSecret}
      * @return the bytes that are hashed and signed
-     */
-    public static byte[] of(@NonNull WellKnownSecret secret) {
-        return of(secret, NumericTagForm.CURRENT);
-    }
-
-    /**
-     * How numeric tag values are rendered.
-     *
-     * <p>{@link #TRUNCATED_TO_LONG} reproduces a historical defect in which every numeric tag
-     * was put through {@code longValue()}, so a ratio of {@code 0.056} signed as {@code 0}.
-     * Vouchers issued that way are live and cannot be re-signed, because the issuer's key is
-     * not available here, so they must keep verifying until they expire. Nothing signs this
-     * way any more.
-     */
-    public enum NumericTagForm {
-        CURRENT,
-        TRUNCATED_TO_LONG
-    }
-
-    /**
-     * Renders the canonical signing bytes, choosing how numeric values are written.
-     *
-     * @param secret      the voucher secret to render
-     * @param numericForm the rendering of numeric tag values
-     * @return the bytes that are hashed and signed
      * @throws IllegalArgumentException if the secret's kind carries no voucher metadata
      */
-    public static byte[] of(@NonNull WellKnownSecret secret, @NonNull NumericTagForm numericForm) {
+    public static byte[] of(@NonNull WellKnownSecret secret) {
         requireVoucherCarryingKind(secret);
 
         StringBuilder sb = new StringBuilder();
         sb.append("[\"").append(secret.getKind().name()).append("\",\"");
         sb.append(Hex.toHexString(secret.getData()));
-        sb.append("\",\"");
-        sb.append(secret.getNonce() != null ? secret.getNonce() : "");
         sb.append("\",[");
 
         boolean first = true;
@@ -100,7 +76,7 @@ public final class VoucherCanonicalBytes {
                 sb.append(",");
             }
             first = false;
-            appendTag(sb, tag, numericForm);
+            appendTag(sb, tag);
         }
         sb.append("]]");
 
@@ -122,13 +98,13 @@ public final class VoucherCanonicalBytes {
         }
     }
 
-    private static void appendTag(StringBuilder sb, WellKnownSecret.Tag tag, NumericTagForm numericForm) {
+    private static void appendTag(StringBuilder sb, WellKnownSecret.Tag tag) {
         sb.append("[\"").append(escapeJson(tag.getKey())).append("\"");
         for (var value : tag.getValues()) {
             sb.append(",");
             String raw = String.valueOf(value);
             if (isNumericTag(tag.getKey())) {
-                appendNumber(sb, parseNumber(raw), numericForm);
+                appendNumber(sb, parseNumber(raw));
             } else {
                 sb.append("\"").append(escapeJson(raw)).append("\"");
             }
@@ -165,11 +141,7 @@ public final class VoucherCanonicalBytes {
         }
     }
 
-    private static void appendNumber(StringBuilder sb, Number value, NumericTagForm numericForm) {
-        if (numericForm == NumericTagForm.TRUNCATED_TO_LONG) {
-            sb.append(value.longValue());
-            return;
-        }
+    private static void appendNumber(StringBuilder sb, Number value) {
         double d = value.doubleValue();
         // Integral doubles serialise as longs, exactly as WellKnownSecretSerializer does, so
         // 1.0 and 1 produce identical bytes rather than two valid forms. NaN/Infinity fall

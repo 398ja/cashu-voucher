@@ -99,7 +99,7 @@ class VoucherCanonicalBytesTest {
         @Test
         @DisplayName("matches the pinned canonical form byte for byte")
         void matchesPinnedForm() {
-            String expected = "[\"VOUCHER\",\"" + VOUCHER_ID_HEX + "\",\"" + NONCE + "\","
+            String expected = "[\"VOUCHER\",\"" + VOUCHER_ID_HEX + "\","
                     + "[[\"issuer\",\"test-issuer\"],"
                     + "[\"unit\",\"sat\"],"
                     + "[\"face_value\",5000],"
@@ -108,6 +108,35 @@ class VoucherCanonicalBytesTest {
                     + "[\"face_decimals\",2]]]";
 
             assertThat(canonical(secret().build())).isEqualTo(expected);
+        }
+
+        /**
+         * The nonce is proof uniqueness, not voucher identity. Every swap gives each output a
+         * fresh nonce, so the signed bytes must not change with it (#46).
+         */
+        @Test
+        @DisplayName("does not depend on the nonce")
+        void doesNotDependOnTheNonce() {
+            String withOneNonce = canonical(secret().nonce("aa".repeat(32)).build());
+            String withAnother = canonical(secret().nonce("bb".repeat(32)).build());
+
+            assertThat(withOneNonce).isEqualTo(withAnother).doesNotContain("aa".repeat(32));
+        }
+
+        /** Everything that identifies the voucher is still covered: the kind, its id, each tag. */
+        @Test
+        @DisplayName("still changes with the voucher id and with every tag")
+        void stillCoversIdentityAndTags() {
+            String base = canonical(secret().build());
+
+            assertThat(canonical(secret().voucherId(UUID.randomUUID()).build())).isNotEqualTo(base);
+            assertThat(canonical(secret().issuerId("other-issuer").build())).isNotEqualTo(base);
+            assertThat(canonical(secret().unit("EUR").build())).isNotEqualTo(base);
+            assertThat(canonical(secret().faceValue(5001L).build())).isNotEqualTo(base);
+            assertThat(canonical(secret().expiresAt(1893456001L).build())).isNotEqualTo(base);
+            assertThat(canonical(secret().memo("other").build())).isNotEqualTo(base);
+            assertThat(canonical(secret().faceDecimals(0).build())).isNotEqualTo(base);
+            assertThat(canonical(secret().issuanceRatio(0.5).build())).isNotEqualTo(base);
         }
 
         /** The signature cannot cover itself, so those tags are excluded from the preimage. */
@@ -134,36 +163,6 @@ class VoucherCanonicalBytesTest {
             unsigned.setIssuerPublicKey("bb".repeat(32));
 
             assertThat(canonical(unsigned)).isEqualTo(before);
-        }
-    }
-
-    @Nested
-    @DisplayName("legacy form")
-    class LegacyForm {
-
-        /**
-         * The compatibility path for vouchers signed before the ratio was bound. It must stay
-         * reproducible, because those vouchers cannot be re-signed.
-         */
-        @Test
-        @DisplayName("truncates a fractional ratio to zero")
-        void truncatesFractionalRatio() {
-            byte[] legacy = VoucherCanonicalBytes.of(
-                    secret().issuanceRatio(0.05611672278338945).build(),
-                    VoucherCanonicalBytes.NumericTagForm.TRUNCATED_TO_LONG);
-
-            assertThat(new String(legacy, StandardCharsets.UTF_8))
-                    .contains("[\"issuance_ratio\",0]");
-        }
-
-        /** The two forms must genuinely differ, or the fallback verifies nothing distinct. */
-        @Test
-        @DisplayName("differs from the current form for a fractional ratio")
-        void differsFromCurrentForm() {
-            VoucherSecret voucher = secret().issuanceRatio(0.05611672278338945).build();
-
-            assertThat(VoucherCanonicalBytes.of(voucher, VoucherCanonicalBytes.NumericTagForm.TRUNCATED_TO_LONG))
-                    .isNotEqualTo(VoucherCanonicalBytes.of(voucher));
         }
     }
 }
