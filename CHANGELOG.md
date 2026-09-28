@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-28
+
+### Added
+
+- **Any verifier can now read an unlocked voucher's fields** (cashu-mint#525). The two voucher
+  kinds keep their fields in different places: a `P2PK_VOUCHER` uses NUT-10 tags, while a plain
+  `VOUCHER` uses CBOR inside `data` and ships an empty tag array. Every check in
+  `VoucherMetadata` reads tags, so for an unlocked voucher they all found nothing and passed:
+  no signature check, no expiry check, no issuer binding. `UnlockedVoucherBlob` is the reader
+  that closes that, placed here rather than in a service because reading a voucher is not
+  anybody's private business. The mint change that uses it lands separately.
+
 ### Security
 
 - **A signature no longer covers more than one reading of the same number (#48).** The
