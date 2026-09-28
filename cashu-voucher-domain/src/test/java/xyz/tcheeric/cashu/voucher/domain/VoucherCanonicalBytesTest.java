@@ -123,7 +123,10 @@ class VoucherCanonicalBytesTest {
             assertThat(withOneNonce).isEqualTo(withAnother).doesNotContain("aa".repeat(32));
         }
 
-        /** Everything that identifies the voucher is still covered: the kind, its id, each tag. */
+        /**
+         * Everything that identifies the voucher is still covered: its id and each tag. The kind
+         * is covered too, which {@code P2PKVoucherSignatureTest} asserts.
+         */
         @Test
         @DisplayName("still changes with the voucher id and with every tag")
         void stillCoversIdentityAndTags() {
@@ -137,6 +140,9 @@ class VoucherCanonicalBytesTest {
             assertThat(canonical(secret().memo("other").build())).isNotEqualTo(base);
             assertThat(canonical(secret().faceDecimals(0).build())).isNotEqualTo(base);
             assertThat(canonical(secret().issuanceRatio(0.5).build())).isNotEqualTo(base);
+            assertThat(canonical(secret().backingStrategy("FIXED").build())).isNotEqualTo(base);
+            assertThat(canonical(secret().issuanceWarrant("{\"form\":\"none\"}").build())).isNotEqualTo(base);
+            assertThat(canonical(secret().merchantMetadata("{\"n\":\"other\"}").build())).isNotEqualTo(base);
         }
 
         /** The signature cannot cover itself, so those tags are excluded from the preimage. */

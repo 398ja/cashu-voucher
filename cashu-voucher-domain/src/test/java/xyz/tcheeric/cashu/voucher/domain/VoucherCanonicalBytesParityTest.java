@@ -22,9 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *
  * <p>If this test fails, the wire format changed. That is a mint-visible change and every live
  * voucher's signature depends on it, so update the vector only alongside the mint — never to make
- * the build green. It last changed for cashu-voucher#46, which removed the nonce from the signed
- * bytes: the vector is the previous one with {@code "0123456789abcdef",} taken out, and nothing
- * else.
+ * the build green.
  */
 class VoucherCanonicalBytesParityTest {
 
@@ -37,6 +35,7 @@ class VoucherCanonicalBytesParityTest {
                     + "65735f6174222c323030303030303030305d2c5b226d65726368616e745f6d65746164617461222c2263"
                     + "6166c3a9205c2271756f7465645c225c6e6c696e655c747365705c5c6261636b225d5d5d";
 
+    /** A locked voucher renders to exactly the bytes the TypeScript renderers pin for it. */
     @Test
     void rendersTheVectorTheTypeScriptVerifierExpects() {
         P2PKVoucherSecret secret = new P2PKVoucherSecret(Hex.decode("02" + "a".repeat(64)));

@@ -20,9 +20,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>The property that matters most here is one this file cannot assert alone: widening
  * {@link VoucherCanonicalBytes} to read the kind from the secret must not change the bytes for
- * an ordinary {@code VOUCHER}, because that would invalidate every signature ever issued.
- * {@link VoucherCanonicalBytesTest} and {@link VoucherGoldenVectorTest} pin those bytes
- * literally and are the real guard. What is added here is that the new kind produces
+ * an ordinary {@code VOUCHER} beyond the deliberate changes pinned in
+ * {@link VoucherCanonicalBytesTest} and {@link VoucherCanonicalBytesParityTest}, which are the
+ * real guard. What is added here is that the new kind produces
  * <em>different</em> bytes, and that the difference is the kind itself.
  */
 class P2PKVoucherSignatureTest {

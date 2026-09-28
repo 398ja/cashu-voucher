@@ -25,9 +25,9 @@ import java.security.SecureRandom;
  * </ul>
  *
  * <h3>Cryptographic Details</h3>
- * <p>Uses BIP-340 Schnorr signatures over the NUT-10 serialized representation of the voucher secret.
- * The canonical bytes for signing are obtained by serializing the VoucherSecret without the
- * signature tag, then hashing with SHA-256.
+ * <p>Uses BIP-340 Schnorr signatures over the SHA-256 of the canonical bytes defined by
+ * {@link VoucherCanonicalBytes}: the kind, the data and the tags, without {@code issuer_sig},
+ * {@code issuer_pubkey} or the per-proof nonce.
  *
  * <h3>Key Format</h3>
  * <p>Keys are expected as hex-encoded strings (matching Nostr format):

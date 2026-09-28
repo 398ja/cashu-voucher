@@ -10,7 +10,7 @@ differs from every input. Two byte-identical secrets hash to the same curve poin
 spent proofs on `Y`, and an output that reuses an input's secret is born already spent (mint error
 11001). So receiving or splitting a voucher always gives each output a fresh NUT-10 `nonce`.
 
-Until now the issuer signed the canonical bytes `[kind, data_hex, nonce, [tags]]`
+Before 0.15.0 the issuer signed the canonical bytes `[kind, data_hex, nonce, [tags]]`
 ([`VoucherCanonicalBytes`](../../cashu-voucher-domain/src/main/java/xyz/tcheeric/cashu/voucher/domain/VoucherCanonicalBytes.java)).
 The nonce was inside the signature, so every fresh nonce broke it. Three things follow from that:
 
@@ -83,13 +83,15 @@ versions would refuse each other's vouchers, so none of them is deployed alone.
 
 ## How it is verified
 
-- A shared test vector: one voucher secret, its canonical bytes, and a signature. The same vector
-  is asserted in cashu-voucher (Java) and in imani-wallet (TypeScript), so the two implementations
-  cannot drift apart.
+- A shared canonical-bytes vector for a `P2PK_VOUCHER` secret. The same hex is asserted by
+  cashu-voucher (`VoucherCanonicalBytesParityTest`), by imani-wallet (`voucherToken.test.ts`) and
+  by NAP (`packages/nap-voucher/test/secret.test.ts`), so the three renderers cannot drift apart.
 - A swap test: a signed voucher, received with a fresh nonce on every output, still verifies, with
-  no key but the issuer's ever used.
-- A negative test for each covered field: changing the kind, the voucher id or any tag breaks the
-  signature. Changing only the nonce does not.
+  no key but the issuer's ever used, in cashu-voucher, imani-wallet-lib, cashu-mint and
+  imani-wallet.
+- A negative test for each covered field: changing the voucher id or any tag changes the signed
+  bytes (`VoucherCanonicalBytesTest`), and changing the kind does too (`P2PKVoucherSignatureTest`).
+  Changing only the nonce does not.
 - On staging: the post-deploy suite (T8, T9) sends and pays back vouchers across wallets, which now
   exercises a voucher received from an issuer other than the gateway.
 

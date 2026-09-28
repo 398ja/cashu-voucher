@@ -18,7 +18,8 @@ import java.nio.charset.StandardCharsets;
  *
  * <p>The form is {@code [kind, "data_hex", [[tag, value...], ...]]}: the voucher, not the proof.
  * {@code issuer_sig} and {@code issuer_pubkey} are omitted because they are only added after
- * signing, and the NUT-10 {@code nonce} is omitted because it identifies one PROOF of the voucher.
+ * signing, and the NUT-10 {@code nonce} is omitted because it identifies one <em>proof</em> of the
+ * voucher, not the voucher.
  * Every swap gives each output a fresh nonce, so a signature over it would break whenever the
  * voucher is received or split, and only the issuer could ever move it (cashu-voucher#46, see
  * {@code docs/explanation/nonce-free-issuer-signature.md}).
@@ -31,9 +32,8 @@ import java.nio.charset.StandardCharsets;
  * signature made for an unlocked voucher verify against a locked one carrying the same
  * metadata, and vice versa, so the kind would not be covered by what the issuer signed.
  *
- * <p>This does not change the bytes for a {@code VOUCHER} secret: the value read is the same
- * string that was previously hardcoded, so every signature made under the old code still
- * verifies.
+ * <p>Reading the kind did not change the bytes for a {@code VOUCHER} secret: the value read is the
+ * same string that was previously hardcoded.
  *
  * <h2>Why the tag key decides what is numeric</h2>
  *

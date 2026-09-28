@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING: the truncated-number legacy form.** `VoucherCanonicalBytes.NumericTagForm`, the
   `of(secret, form)` overload, and the `cashu.voucher.legacy-canonical.enabled` /
   `CASHU_VOUCHER_LEGACY_CANONICAL` switch are gone. There is one canonical form and one
-  verification path.
+  verification path (#46).
 
 ## [0.14.6] - 2026-09-26
 
