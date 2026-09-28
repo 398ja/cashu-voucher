@@ -208,6 +208,20 @@ public final class VoucherSignatureService {
                 return false;
             }
 
+            // A valid signature over normalised bytes is not enough. The canonicaliser makes
+            // "1000", "1000.0" and "1e3" hash identically, so one signature covers all three,
+            // and the Java and TypeScript readers disagree about what those strings mean: one
+            // yields no face value at all where the other yields 1000. A holder could pick the
+            // reading that suits them. So the wire form must ALREADY be canonical, not merely
+            // normalise to something that is. See VoucherCanonicalBytes#hasCanonicalNumericTags
+            // and cashu-voucher#48.
+            if (!VoucherCanonicalBytes.hasCanonicalNumericTags(secret)) {
+                logger.warn("voucher_numeric_tag_not_canonical voucherId={} - refusing a signature "
+                                + "over a number with more than one reading",
+                        VoucherMetadata.voucherId(secret));
+                return false;
+            }
+
             // Get canonical bytes for verification (NUT-10 format without signature)
             byte[] canonicalBytes = getCanonicalBytesForSigning(secret);
             byte[] messageHash = sha256(canonicalBytes);

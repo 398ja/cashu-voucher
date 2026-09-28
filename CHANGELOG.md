@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **A signature no longer covers more than one reading of the same number (#48).** The
+  canonicaliser normalises numeric tags before hashing, which it must so the Java and
+  TypeScript readers agree on the bytes. The side effect was that `1000`, `01000`, `1000.0`
+  and `1e3` all hashed identically and so all satisfied one signature, while the two readers
+  disagreed about what those strings mean: `Long.parseLong` refuses `1000.0` and yields no
+  face value, where the wallet's `Number()` yields 1000. A holder could present whichever
+  reading suited them, which is how the Java-side face-value clamp was dropped.
+
+  Verification now also requires each numeric tag's wire form to BE canonical, not merely to
+  normalise to something that is. Issuers already produce the canonical form, so no genuine
+  voucher is affected, and `mvn verify` passes unchanged. The wallet applies the same rule on
+  its locked-voucher path, because fixing one side alone would only reverse the disagreement.
+
 ## [0.14.6] - 2026-09-26
 
 ### Fixed

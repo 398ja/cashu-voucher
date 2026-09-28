@@ -7,6 +7,7 @@ import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import xyz.tcheeric.cashu.common.nut18.VoucherTags;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
  * Renders the exact bytes an issuer signature commits to.
@@ -105,6 +106,59 @@ public final class VoucherCanonicalBytes {
         sb.append("]]");
 
         return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Whether every numeric tag is already written in its canonical form.
+     *
+     * <h2>Why a signature is not enough on its own</h2>
+     *
+     * <p>{@link #of} NORMALISES numeric tags before hashing, which it must: the hash has to be
+     * stable across the Java and TypeScript readers. The side effect is that {@code "1000"},
+     * {@code "01000"}, {@code "1000.0"} and {@code "1e3"} all hash the same, so one signature
+     * verifies over all four.
+     *
+     * <p>That would be harmless if every reader agreed on the value. They do not.
+     * {@code VoucherSecret.getFaceValue} parses with {@code Long.parseLong}, which refuses
+     * {@code "1000.0"} and {@code "1e3"} and so yields NO face value, while the wallet's
+     * {@code Number()} reads both as 1000. One signed voucher, two readings, and a holder picks
+     * whichever suits them. Dropping the Java face-value clamp is what that buys.
+     *
+     * <p>So verification asks this as well: were the bytes already canonical, or did they only
+     * become canonical because we normalised them? A voucher in the second category is refused.
+     * Issuers produce the canonical form, so nothing genuine is affected.
+     *
+     * <p>cashu-voucher#48. The same rule is what lets the gateway safely sign a secret a wallet
+     * supplied: an ambiguous number must never reach a signing key.
+     *
+     * @param secret the voucher secret whose tags to inspect
+     * @return true when no numeric tag needed normalising
+     */
+    public static boolean hasCanonicalNumericTags(@NonNull WellKnownSecret secret) {
+        List<WellKnownSecret.Tag> tags = secret.getTags();
+        if (tags == null) {
+            return true;
+        }
+        for (WellKnownSecret.Tag tag : tags) {
+            if (!isNumericTag(tag.getKey())) {
+                continue;
+            }
+            for (Object value : tag.getValues()) {
+                String wire = String.valueOf(value);
+                StringBuilder canonical = new StringBuilder();
+                try {
+                    appendNumber(canonical, parseNumber(wire), NumericTagForm.CURRENT);
+                } catch (NumberFormatException notANumber) {
+                    // A numeric tag that is not a number has no canonical form, so it cannot
+                    // be in one. Refusing beats hashing it as text and accepting it.
+                    return false;
+                }
+                if (!canonical.toString().equals(wire)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /**
