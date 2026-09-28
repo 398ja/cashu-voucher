@@ -56,6 +56,7 @@ Background and design decisions:
 | [Model B Vouchers](./explanation/model-b-vouchers.md) | Why merchant-only redemption |
 | [Backing Strategies](./explanation/backing-strategies.md) | FIXED, MINIMAL, PROPORTIONAL |
 | [Nostr Integration](./explanation/nostr-integration.md) | Why Nostr, how it works |
+| [A voucher signature that survives a swap](./explanation/nonce-free-issuer-signature.md) | Why the issuer signature no longer covers the per-proof nonce |
 
 ## Key Concepts
 
