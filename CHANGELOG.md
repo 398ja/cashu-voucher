@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The published pom declared no dependencies at all (#50).** `cashu-voucher-domain` ran
+  `maven-shade-plugin` to build a JMH benchmark jar, and `createDependencyReducedPom` defaults
+  to true, so shade rewrote the module's published pom and stripped every compile dependency:
+  `cashu-lib-common`, `cashu-lib-crypto`, `nostr-java-core` and `jackson-databind`. Nothing was
+  bundled in exchange, because the shaded output is a separate `benchmarks.jar`.
+
+  In-repo builds never noticed, since the reactor and `imani-bom` supply those dependencies
+  anyway. An external consumer got a compile failure on `VoucherSecret`, which is in this
+  module's public API, or a `NoClassDefFoundError` on nostr's Schnorr the first time it verified
+  a voucher signature. Every release from 0.12.0 to 0.15.0 shipped that way.
+
+
 ## [0.15.0] - 2026-09-28
 
 ### Added
