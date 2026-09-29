@@ -116,7 +116,26 @@
 
     <build>
         <plugins>
-            <!-- Maven Shade Plugin for JMH benchmarks -->
+            <!-- Maven Shade Plugin for JMH benchmarks.
+                 It must not rewrite the published pom, and that is what
+                 `createDependencyReducedPom` is for here.
+
+                 That option defaults to TRUE, so shade used to replace this module's
+                 published pom with one declaring no compile dependencies at all: no
+                 cashu-lib-common, no nostr-java-core, no Jackson. The shaded output is
+                 `benchmarks.jar`, a separate finalName, so nothing was actually bundled into
+                 the published artifact and the dependencies were simply lost.
+
+                 The effect was invisible in-repo, because the reactor and imani-bom supply
+                 those dependencies anyway, and broke any consumer resolving the artifact on
+                 its own: a compile failure on `VoucherSecret`, which is in this module's
+                 public API, or a NoClassDefFoundError on nostr's Schnorr the first time a
+                 voucher signature is verified. Every release from 0.12.0 to 0.15.0 shipped
+                 that way. See #50.
+
+                 Building the benchmark jar on every `package` is still wasteful, but moving
+                 it behind a profile changes how benchmarks are run, so that is left alone
+                 here deliberately: this change is about what gets PUBLISHED. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -128,6 +147,7 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
                             <finalName>benchmarks</finalName>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
