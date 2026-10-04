@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- `IssuanceWarrant.Form.DELEGATED` now describes the shipped model (imani-wallet#176): a
+  stall-signed kind-30078 delegation inside the warrant plus the delegate's signature over the
+  sale digest and `ref`, rather than the earlier credential-minted two-step idea.
+
 ### Fixed
 
 - **The published pom declared no dependencies at all (#50).** `cashu-voucher-domain` ran

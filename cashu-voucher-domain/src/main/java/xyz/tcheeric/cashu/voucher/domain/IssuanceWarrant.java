@@ -117,11 +117,21 @@ public final class IssuanceWarrant {
         PROCESSOR("processor"),
 
         /**
-         * A terminal credential the stall issued, and can burn, signed the digest.
+         * A key the stall delegated issuance to signed the sale, and the stall's signed
+         * delegation travels with it (imani-wallet#152, #176).
          *
-         * <p>Prevention, and revocable. Verification is two steps: the signature against the
-         * credential's lock key, then that the credential was minted by {@code issuer}. Doing
-         * only the first accepts a credential the attacker minted for themselves.
+         * <p>The warrant carries the stall's kind-30078 Nostr event (one {@code d} tag
+         * {@code imani:issuer-delegation}, one {@code p} naming the delegate key, scope
+         * {@code coupon:issue}, a NIP-40 {@code expiration}), and the delegate's signature over
+         * the sale digest's fields plus the processor reference {@code ref}. Verification is two
+         * steps, both offline: the event is signed by {@code issuer} and in force, then the
+         * warrant signature is the delegate's. Doing only the second accepts a key the attacker
+         * made for themselves.
+         *
+         * <p>The card path uses it: imani-wallet's purchase-issuer signs with the stall's
+         * terminal-credential lock key. Burning that credential stops new mints at the gateway;
+         * coupons already minted stay valid until the delegation expires. This class does not
+         * verify the form itself. The wallet does ({@code issuerDelegation.ts}).
          */
         DELEGATED("delegated"),
 
