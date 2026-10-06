@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-06
+
+### BREAKING CHANGES
+
+- **New terminal warrant API requires an explicit expiry choice.** `IssuanceWarrant.verifyTerminal(TerminalSale)`
+  is the new verification entry point for the `terminal` form, and `TerminalSale` cannot be built without an
+  `ExpiryCheck` (`ExpiryCheck.at(nowEpochSeconds)` or `ExpiryCheck.skipOffline()`). Callers must choose one.
+
 ### Fixed
 
 - **The published pom declared no dependencies at all (#50).** `cashu-voucher-domain` ran
