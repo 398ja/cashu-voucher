@@ -245,23 +245,30 @@ byte[] saleDigest(String issuerId, long saleTotalMinor, int faceDecimals, String
 boolean verifyMerchant(String issuerId, long saleTotalMinor, int faceDecimals, String unit,
                        String saleNonce, String signatureHex, long couponFaceMinor)
 
-boolean verifyTerminal(String issuerId, P2PKVoucherSecret credential,
-                       Collection<String> trustedServiceKeys, long saleTotalMinor,
-                       int faceDecimals, String unit, String saleNonce,
-                       String signatureHex, long couponFaceMinor)
+TerminalVerdict verifyTerminal(TerminalSale sale)   // sale built with TerminalSale.builder()
+
+P2PKVoucherSecret parseCredential(String wireSecret) // throws unless the kind is P2PK_VOUCHER
 ```
 
-`verifyTerminal` returns true only when all of these hold:
+`verifyTerminal` returns a valid verdict only when all of these hold, otherwise the verdict's
+`refusal` names the first that failed:
 
-1. The coupon's face value fits under the sale total.
-2. The credential's issuer signature verifies, and its signing key is in `trustedServiceKeys`.
-3. The credential's `issuer_id` equals `issuerId`.
-4. Its `merchant_metadata` is `{"terminal": true, "stall_pubkey": issuerId, "role": "issue-and-redeem", "lock_key": ...}`. `terminal` must be the boolean `true`. A `redeem-only` role is refused.
-5. The credential's P2PK lock is `lock_key`.
-6. `signatureHex` is a BIP-340 signature by `lock_key` over `saleDigest` with `issuerId` as the stall.
+1. `issuerId` is lowercase hex64, `unit` and `saleNonce` hold no control characters, the sale
+   total is 0..2^53-1 and `faceDecimals` is 0..18 (`MALFORMED_SALE`).
+2. The coupon's face value fits under the sale total (`COUPON_ABOVE_SALE`).
+3. The credential's signing key is in `trustedServiceKeys` (`UNTRUSTED_SERVICE_KEY`; an empty
+   list refuses everything) and its signature verifies (`BAD_CREDENTIAL_SIGNATURE`).
+4. The credential's `issuer_id` equals `issuerId` (`WRONG_STALL`).
+5. If `credentialValidAtEpochSeconds` is set, the credential has not expired by then
+   (`CREDENTIAL_EXPIRED`). The portal passes now. An offline verifier passes null.
+6. Its `merchant_metadata` is `{"terminal": true, "stall_pubkey": issuerId, "role": "issue-and-redeem", "lock_key": ...}`,
+   parsed strictly (`NOT_A_SELLING_TERMINAL`), and `lock_key` is not `issuerId` (`LOCK_IS_STALL`).
+7. The credential's P2PK lock is `lock_key` (`LOCK_MISMATCH`).
+8. `signatureHex` is a BIP-340 signature by `lock_key` over `saleDigest` (`BAD_SALE_SIGNATURE`).
 
 It does not check liveness. A revoked credential still verifies offline, because revocation is
-a NUT-07 spend only the gateway sees. The portal checks liveness at issuance.
+a NUT-07 spend only the gateway sees. The portal checks liveness at issuance. It does not check
+the coupon's own unit and decimals either: the caller must check they match the sale.
 
 ---
 
