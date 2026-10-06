@@ -1,15 +1,20 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.NonNull;
 import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import xyz.tcheeric.cashu.common.nut11.P2PKVoucherSecret;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Collection;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * What, outside the issuing service, authorised an issuance.
@@ -87,10 +92,10 @@ public final class IssuanceWarrant {
     }
 
     /**
-     * The four shapes a warrant can take.
+     * The shapes a warrant can take.
      *
-     * <p>One field, four forms, so every verifier has one code path and an unknown shape is
-     * <em>refused</em> rather than guessed at.
+     * <p>One field, a closed set of forms, so every verifier has one code path and an unknown
+     * shape is <em>refused</em> rather than guessed at.
      */
     public enum Form {
 
@@ -124,6 +129,16 @@ public final class IssuanceWarrant {
          * only the first accepts a credential the attacker minted for themselves.
          */
         DELEGATED("delegated"),
+
+        /**
+         * A terminal's own key signed the digest, and the warrant carries the terminal
+         * credential that lets that key sell for the stall.
+         *
+         * <p>Prevention, and revocable by spending the credential. Verified offline by
+         * {@link IssuanceWarrant#verifyTerminal}. Not {@link #DELEGATED}, which stays the
+         * card-purchase form.
+         */
+        TERMINAL("terminal"),
 
         /**
          * Nothing outside the issuing service authorised this, and the issuer has SIGNED that.
@@ -251,6 +266,165 @@ public final class IssuanceWarrant {
                 issuerId,
                 saleDigest(issuerId, saleTotalMinor, faceDecimals, unit, saleNonce),
                 signatureHex);
+    }
+
+    /**
+     * Verifies a {@code terminal} warrant offline: a till's key {@code K} signed the sale, and
+     * the warrant carries the credential the stall's issuing service minted to {@code K}.
+     *
+     * <p>Every check below is needed, and each closes a different forgery:
+     *
+     * <ol>
+     *   <li><b>The coupon fits under the sale total</b>, the same ceiling as
+     *       {@link #verifyMerchant}.</li>
+     *   <li><b>The credential is signed, by a service key the caller trusts.</b> The signature
+     *       is checked against the key written inside the credential, so that key must also be
+     *       in {@code trustedServiceKeys}. Without the second half, anyone can mint themselves a
+     *       credential with their own key and have it verify.</li>
+     *   <li><b>{@code issuer_id == issuerId}.</b> A till sells only for the stall that issued
+     *       it.</li>
+     *   <li><b>The metadata is a terminal with {@code role == issue-and-redeem}.</b>
+     *       {@code terminal} must be the boolean {@code true}, and {@code stall_pubkey} must
+     *       equal {@code issuerId}, as the wallet and gateway already require. A redeem-only
+     *       till may not sell.</li>
+     *   <li><b>The mint lock is {@code lock_key}</b>, so the credential is spendable only by the
+     *       key it authorises.</li>
+     *   <li><b>{@code signatureHex} is a BIP-340 signature by {@code lock_key} over
+     *       {@link #saleDigest}</b> with {@code issuerId} as the stall. This is the half that
+     *       makes a copied credential worthless without {@code K}.</li>
+     * </ol>
+     *
+     * <p><b>What this does not check: liveness.</b> A revoked credential still verifies here,
+     * because revocation is a NUT-07 spend that only the gateway sees. The portal checks it at
+     * issuance, so a coupon is never minted on a revoked credential, and coupons sold before a
+     * revocation rightly stay valid. Expiry is likewise not checked: what matters is whether the
+     * credential was valid when the sale was warranted, which the portal enforces.
+     *
+     * <p>Not {@link Form#DELEGATED}: that is the card-purchase form, a stall-signed delegation
+     * event whose nonce is spent once, whereas one terminal Sell may be split into several
+     * parts under one warrant.
+     *
+     * @param issuerId           the stall's pubkey, hex, from the voucher's {@code issuer} tag
+     * @param credential         the terminal credential's signed secret (never the proof's
+     *                           {@code C})
+     * @param trustedServiceKeys issuing-service public keys, hex, allowed to mint credentials
+     * @param saleTotalMinor     the total the warrant claims to authorise
+     * @param faceDecimals       decimal places
+     * @param unit               the currency
+     * @param saleNonce          the per-sale nonce carried in the warrant
+     * @param signatureHex       {@code K}'s BIP-340 signature over the sale digest
+     * @param couponFaceMinor    THIS coupon's face value, which must fit inside the sale
+     * @return true only if every check above passes
+     */
+    public static boolean verifyTerminal(
+            @NonNull String issuerId,
+            @NonNull P2PKVoucherSecret credential,
+            @NonNull Collection<String> trustedServiceKeys,
+            long saleTotalMinor,
+            int faceDecimals,
+            @NonNull String unit,
+            @NonNull String saleNonce,
+            @NonNull String signatureHex,
+            long couponFaceMinor
+    ) {
+        if (!coversFaceValue(saleTotalMinor, couponFaceMinor)) {
+            logger.warn("terminal warrant refused: coupon face {} exceeds warranted sale total {}",
+                    couponFaceMinor, saleTotalMinor);
+            return false;
+        }
+
+        String servicePubkey = credential.getIssuerPublicKey();
+        if (servicePubkey == null || !containsIgnoreCase(trustedServiceKeys, servicePubkey)) {
+            logger.warn("terminal warrant refused: credential not signed by a trusted service key");
+            return false;
+        }
+        if (!VoucherSignatureService.verify(credential)) {
+            logger.warn("terminal warrant refused: credential signature does not verify");
+            return false;
+        }
+
+        if (!issuerId.equalsIgnoreCase(credential.getIssuerId())) {
+            logger.warn("terminal warrant refused: credential issued by another stall");
+            return false;
+        }
+
+        String lockKey = terminalLockKey(credential.getMerchantMetadata(), issuerId);
+        if (lockKey == null) {
+            return false;
+        }
+
+        byte[] lock = credential.getData();
+        if (lock == null || lock.length != 33
+                || !Hex.toHexString(lock, 1, 32).equalsIgnoreCase(lockKey)) {
+            logger.warn("terminal warrant refused: credential is not locked to its lock_key");
+            return false;
+        }
+
+        return signatureValid(
+                lockKey.toLowerCase(Locale.ROOT),
+                saleDigest(issuerId, saleTotalMinor, faceDecimals, unit, saleNonce),
+                signatureHex);
+    }
+
+    /** The role a terminal needs to sell. */
+    private static final String ISSUE_AND_REDEEM = "issue-and-redeem";
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    /**
+     * The {@code lock_key} of a selling terminal's metadata, or {@code null} with a log line
+     * saying why it is not one.
+     */
+    private static String terminalLockKey(String metadataJson, String issuerId) {
+        if (metadataJson == null) {
+            logger.warn("terminal warrant refused: credential carries no metadata");
+            return null;
+        }
+        JsonNode metadata;
+        try {
+            metadata = JSON.readTree(metadataJson);
+        } catch (Exception e) {
+            logger.warn("terminal warrant refused: credential metadata is not JSON");
+            return null;
+        }
+        if (metadata == null || !metadata.isObject()) {
+            logger.warn("terminal warrant refused: credential metadata is not an object");
+            return null;
+        }
+        // The boolean true, not truthy: a coupon carrying "terminal": "yes" is not authority.
+        JsonNode terminal = metadata.get("terminal");
+        if (terminal == null || !terminal.isBoolean() || !terminal.booleanValue()) {
+            logger.warn("terminal warrant refused: credential metadata is not a terminal");
+            return null;
+        }
+        JsonNode stall = metadata.get("stall_pubkey");
+        if (stall == null || !stall.isTextual() || !issuerId.equalsIgnoreCase(stall.textValue())) {
+            logger.warn("terminal warrant refused: credential names a different stall");
+            return null;
+        }
+        JsonNode role = metadata.get("role");
+        if (role == null || !role.isTextual() || !ISSUE_AND_REDEEM.equals(role.textValue())) {
+            logger.warn("terminal warrant refused: terminal role may not sell");
+            return null;
+        }
+        JsonNode lockKey = metadata.get("lock_key");
+        if (lockKey == null || !lockKey.isTextual()
+                || !HEX64.matcher(lockKey.textValue()).matches()) {
+            logger.warn("terminal warrant refused: credential lock_key is malformed");
+            return null;
+        }
+        return lockKey.textValue();
+    }
+
+    private static final Pattern HEX64 = Pattern.compile("^[0-9a-fA-F]{64}$");
+
+    private static boolean containsIgnoreCase(Collection<String> values, String wanted) {
+        for (String value : values) {
+            if (value != null && value.equalsIgnoreCase(wanted)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -219,6 +219,52 @@ SignedVoucher createSigned(
 
 ---
 
+## IssuanceWarrant
+
+What, outside the issuing service, authorised an issuance. A warrant signs a sale digest
+(`saleDigest(issuerId, saleTotalMinor, faceDecimals, unit, saleNonce)`) and is checked as a
+ceiling: a coupon's face value must not exceed the warranted sale total.
+
+**Package:** `xyz.tcheeric.cashu.voucher.domain`
+
+### Forms
+
+| Form | Wire | Evidence |
+|------|------|----------|
+| `MERCHANT` | `merchant` | The stall's own BIP-340 signature over the digest |
+| `PROCESSOR` | `processor` | A payment processor charge into the stall's account |
+| `DELEGATED` | `delegated` | The card-purchase form (see cashu-voucher#52) |
+| `TERMINAL` | `terminal` | A terminal key `K` signed the digest, and the warrant carries the terminal credential minted to `K` |
+| `NONE` | `none` | Nothing, and the issuer signed that |
+
+### Static Methods
+
+```java
+byte[] saleDigest(String issuerId, long saleTotalMinor, int faceDecimals, String unit, String saleNonce)
+
+boolean verifyMerchant(String issuerId, long saleTotalMinor, int faceDecimals, String unit,
+                       String saleNonce, String signatureHex, long couponFaceMinor)
+
+boolean verifyTerminal(String issuerId, P2PKVoucherSecret credential,
+                       Collection<String> trustedServiceKeys, long saleTotalMinor,
+                       int faceDecimals, String unit, String saleNonce,
+                       String signatureHex, long couponFaceMinor)
+```
+
+`verifyTerminal` returns true only when all of these hold:
+
+1. The coupon's face value fits under the sale total.
+2. The credential's issuer signature verifies, and its signing key is in `trustedServiceKeys`.
+3. The credential's `issuer_id` equals `issuerId`.
+4. Its `merchant_metadata` is `{"terminal": true, "stall_pubkey": issuerId, "role": "issue-and-redeem", "lock_key": ...}`. `terminal` must be the boolean `true`. A `redeem-only` role is refused.
+5. The credential's P2PK lock is `lock_key`.
+6. `signatureHex` is a BIP-340 signature by `lock_key` over `saleDigest` with `issuerId` as the stall.
+
+It does not check liveness. A revoked credential still verifies offline, because revocation is
+a NUT-07 spend only the gateway sees. The portal checks liveness at issuance.
+
+---
+
 ## VoucherValidator
 
 Utility class for comprehensive voucher validation.

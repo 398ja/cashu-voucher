@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A `terminal` issuance warrant (imani-wallet#160, spec §5.5).** `IssuanceWarrant.Form.TERMINAL`
+  (wire `terminal`) and `IssuanceWarrant.verifyTerminal(issuerId, credential,
+  trustedServiceKeys, saleTotalMinor, faceDecimals, unit, saleNonce, signatureHex,
+  couponFaceMinor)`. A till's key `K` signs the existing sale digest, and the warrant carries
+  the terminal credential the gateway minted to `K`. Verification is offline: the credential's
+  issuer signature verifies under a trusted service key, its `issuer_id` is the stall, its
+  metadata is a terminal with role `issue-and-redeem`, it is P2PK-locked to its `lock_key`, and
+  the sale signature verifies against `lock_key`. Liveness (revocation) is not checked here.
+  The portal checks it at issuance.
+
+  `Form.DELEGATED` is unchanged. It stays the card-purchase form (#52), because its nonce is
+  spent once, while one terminal Sell may be split into several parts under one warrant.
+
 ### Fixed
 
 - **The published pom declared no dependencies at all (#50).** `cashu-voucher-domain` ran
