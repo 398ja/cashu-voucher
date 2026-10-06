@@ -1,13 +1,20 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import lombok.Builder;
 import lombok.NonNull;
+import lombok.Value;
 import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
 import xyz.tcheeric.cashu.common.nut11.P2PKVoucherSecret;
+import xyz.tcheeric.cashu.common.util.SecretUtil;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -269,107 +276,229 @@ public final class IssuanceWarrant {
     }
 
     /**
-     * Verifies a {@code terminal} warrant offline: a till's key {@code K} signed the sale, and
-     * the warrant carries the credential the stall's issuing service minted to {@code K}.
+     * Why a {@code terminal} warrant was refused.
+     *
+     * <p>A reason rather than a boolean, so the portal can say which check failed instead of
+     * having only a WARN line to go on.
+     */
+    public enum TerminalRefusal {
+        /** {@code issuerId}, {@code unit}, {@code saleNonce} or an amount is out of shape. */
+        MALFORMED_SALE,
+        /** The coupon's face value exceeds the warranted sale total. */
+        COUPON_ABOVE_SALE,
+        /** The credential was not signed by a key in {@code trustedServiceKeys}. */
+        UNTRUSTED_SERVICE_KEY,
+        /** The credential's service signature does not verify. */
+        BAD_CREDENTIAL_SIGNATURE,
+        /** The credential's {@code issuer_id} is not the stall. */
+        WRONG_STALL,
+        /** The credential had expired at {@code credentialValidAtEpochSeconds}. */
+        CREDENTIAL_EXPIRED,
+        /** The metadata is not a terminal of this stall with role {@code issue-and-redeem}. */
+        NOT_A_SELLING_TERMINAL,
+        /** {@code lock_key} is the stall's own key, which would turn merchant warrants into terminal ones. */
+        LOCK_IS_STALL,
+        /** The credential's P2PK lock is not its {@code lock_key}. */
+        LOCK_MISMATCH,
+        /** The sale signature is not {@code lock_key}'s over {@link #saleDigest}. */
+        BAD_SALE_SIGNATURE
+    }
+
+    /**
+     * Everything {@link #verifyTerminal(TerminalSale)} needs, named, so that the adjacent
+     * amounts and strings cannot be swapped silently.
+     */
+    @Value
+    @Builder
+    public static class TerminalSale {
+        /** The stall's pubkey, lowercase hex, from the voucher's {@code issuer} tag. */
+        @NonNull String issuerId;
+        /** The terminal credential's signed secret (never the proof's {@code C}). */
+        @NonNull P2PKVoucherSecret credential;
+        /**
+         * The gateway-customer service key(s) that mint terminal credentials. Mandatory: an
+         * empty collection refuses everything. Not every voucher-signing key belongs here.
+         */
+        @NonNull Collection<String> trustedServiceKeys;
+        /** The total the warrant claims to authorise, 0..2^53-1. */
+        long saleTotalMinor;
+        /** Decimal places, 0..18. */
+        int faceDecimals;
+        /** The currency, without control characters. */
+        @NonNull String unit;
+        /** The per-sale nonce carried in the warrant, without control characters. */
+        @NonNull String saleNonce;
+        /** {@code K}'s BIP-340 signature over the sale digest. */
+        @NonNull String signatureHex;
+        /** THIS coupon's face value, which must fit inside the sale. */
+        long couponFaceMinor;
+        /**
+         * The instant, in epoch seconds, at which the credential must be unexpired, or
+         * {@code null} to skip the expiry check. The portal passes now at issuance; an offline
+         * verifier of an already-issued coupon passes {@code null}.
+         */
+        Long credentialValidAtEpochSeconds;
+    }
+
+    /** The outcome of {@link #verifyTerminal(TerminalSale)}: valid, or one refusal reason. */
+    @Value
+    public static class TerminalVerdict {
+        private static final TerminalVerdict VALID = new TerminalVerdict(null);
+
+        /** Why it was refused, or {@code null} when valid. */
+        TerminalRefusal refusal;
+
+        public boolean isValid() {
+            return refusal == null;
+        }
+
+        static TerminalVerdict refused(TerminalRefusal reason) {
+            logger.warn("terminal warrant refused: {}", reason);
+            return new TerminalVerdict(reason);
+        }
+    }
+
+    /**
+     * Parses a terminal credential as received on the wire (a NUT-10 secret, JSON) and
+     * checks it is a {@code P2PK_VOUCHER}.
+     *
+     * @throws IllegalArgumentException if it does not parse or is another kind of secret
+     */
+    public static P2PKVoucherSecret parseCredential(@NonNull String wireSecret) {
+        Object secret;
+        try {
+            secret = SecretUtil.toSecret(wireSecret);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("terminal credential does not parse", e);
+        }
+        if (!(secret instanceof P2PKVoucherSecret credential)
+                || credential.getKind() != WellKnownSecret.Kind.P2PK_VOUCHER) {
+            throw new IllegalArgumentException("terminal credential is not a P2PK_VOUCHER");
+        }
+        return credential;
+    }
+
+    /**
+     * Verifies a {@code terminal} warrant: a till's key {@code K} signed the sale, and the
+     * warrant carries the credential the stall's issuing service minted to {@code K}.
      *
      * <p>Every check below is needed, and each closes a different forgery:
      *
      * <ol>
+     *   <li><b>The inputs are well-formed.</b> {@code issuerId} is lowercase HEX64, and
+     *       {@code unit} and {@code saleNonce} carry no control characters (in particular no
+     *       US, the digest's separator, so a nonce cannot smuggle in the extra field of the
+     *       {@code delegated} digest). {@code saleTotalMinor} is 0..2^53-1, so the Java and
+     *       TypeScript digests agree, and {@code faceDecimals} is 0..18.</li>
      *   <li><b>The coupon fits under the sale total</b>, the same ceiling as
      *       {@link #verifyMerchant}.</li>
-     *   <li><b>The credential is signed, by a service key the caller trusts.</b> The signature
-     *       is checked against the key written inside the credential, so that key must also be
-     *       in {@code trustedServiceKeys}. Without the second half, anyone can mint themselves a
-     *       credential with their own key and have it verify.</li>
+     *   <li><b>The credential is signed, by a service key the caller trusts.</b> Without the
+     *       allow-list, anyone can mint themselves a credential with their own key.</li>
      *   <li><b>{@code issuer_id == issuerId}.</b> A till sells only for the stall that issued
      *       it.</li>
-     *   <li><b>The metadata is a terminal with {@code role == issue-and-redeem}.</b>
-     *       {@code terminal} must be the boolean {@code true}, and {@code stall_pubkey} must
-     *       equal {@code issuerId}, as the wallet and gateway already require. A redeem-only
-     *       till may not sell.</li>
-     *   <li><b>The mint lock is {@code lock_key}</b>, so the credential is spendable only by the
-     *       key it authorises.</li>
+     *   <li><b>Not expired at {@code credentialValidAtEpochSeconds}</b>, when that is given.</li>
+     *   <li><b>The metadata is a terminal with {@code role == issue-and-redeem}</b>,
+     *       {@code terminal} the boolean {@code true}, {@code stall_pubkey == issuerId}, and
+     *       {@code lock_key != issuerId}.</li>
+     *   <li><b>The mint lock is {@code lock_key}.</b></li>
      *   <li><b>{@code signatureHex} is a BIP-340 signature by {@code lock_key} over
-     *       {@link #saleDigest}</b> with {@code issuerId} as the stall. This is the half that
-     *       makes a copied credential worthless without {@code K}.</li>
+     *       {@link #saleDigest}.</b></li>
      * </ol>
      *
-     * <p><b>What this does not check: liveness.</b> A revoked credential still verifies here,
-     * because revocation is a NUT-07 spend that only the gateway sees. The portal checks it at
-     * issuance, so a coupon is never minted on a revoked credential, and coupons sold before a
-     * revocation rightly stay valid. Expiry is likewise not checked: what matters is whether the
-     * credential was valid when the sale was warranted, which the portal enforces.
+     * <p><b>Not checked: liveness.</b> A revoked credential still verifies, because revocation
+     * is a NUT-07 spend only the gateway sees; the portal checks it at issuance.
      *
-     * <p>Not {@link Form#DELEGATED}: that is the card-purchase form, a stall-signed delegation
-     * event whose nonce is spent once, whereas one terminal Sell may be split into several
-     * parts under one warrant.
+     * <p><b>Expiry is checked only when asked.</b> The portal passes now as
+     * {@code credentialValidAtEpochSeconds}, so an expired credential cannot warrant a new
+     * sale. An offline verifier of an already-issued coupon passes {@code null}, because a
+     * coupon sold before expiry rightly stays valid.
      *
-     * @param issuerId           the stall's pubkey, hex, from the voucher's {@code issuer} tag
-     * @param credential         the terminal credential's signed secret (never the proof's
-     *                           {@code C})
-     * @param trustedServiceKeys issuing-service public keys, hex, allowed to mint credentials
-     * @param saleTotalMinor     the total the warrant claims to authorise
-     * @param faceDecimals       decimal places
-     * @param unit               the currency
-     * @param saleNonce          the per-sale nonce carried in the warrant
-     * @param signatureHex       {@code K}'s BIP-340 signature over the sale digest
-     * @param couponFaceMinor    THIS coupon's face value, which must fit inside the sale
-     * @return true only if every check above passes
+     * <p><b>Not checked: the denomination.</b> The coupon's own unit and decimals are not
+     * inputs, so the caller must check they equal {@code unit} and {@code faceDecimals}.
      */
-    public static boolean verifyTerminal(
-            @NonNull String issuerId,
-            @NonNull P2PKVoucherSecret credential,
-            @NonNull Collection<String> trustedServiceKeys,
-            long saleTotalMinor,
-            int faceDecimals,
-            @NonNull String unit,
-            @NonNull String saleNonce,
-            @NonNull String signatureHex,
-            long couponFaceMinor
-    ) {
+    public static TerminalVerdict verifyTerminal(@NonNull TerminalSale sale) {
+        String issuerId = sale.getIssuerId();
+        P2PKVoucherSecret credential = sale.getCredential();
+        Collection<String> trustedServiceKeys = sale.getTrustedServiceKeys();
+        long saleTotalMinor = sale.getSaleTotalMinor();
+        long couponFaceMinor = sale.getCouponFaceMinor();
+
+        if (!LOWER_HEX64.matcher(issuerId).matches()
+                || hasControlCharacter(sale.getUnit()) || hasControlCharacter(sale.getSaleNonce())
+                || saleTotalMinor < 0 || saleTotalMinor > MAX_SAFE_INTEGER || couponFaceMinor < 0
+                || sale.getFaceDecimals() < 0 || sale.getFaceDecimals() > MAX_FACE_DECIMALS) {
+            return TerminalVerdict.refused(TerminalRefusal.MALFORMED_SALE);
+        }
+
         if (!coversFaceValue(saleTotalMinor, couponFaceMinor)) {
-            logger.warn("terminal warrant refused: coupon face {} exceeds warranted sale total {}",
+            logger.warn("terminal warrant: coupon face {} exceeds warranted sale total {}",
                     couponFaceMinor, saleTotalMinor);
-            return false;
+            return TerminalVerdict.refused(TerminalRefusal.COUPON_ABOVE_SALE);
         }
 
         String servicePubkey = credential.getIssuerPublicKey();
         if (servicePubkey == null || !containsIgnoreCase(trustedServiceKeys, servicePubkey)) {
-            logger.warn("terminal warrant refused: credential not signed by a trusted service key");
-            return false;
+            return TerminalVerdict.refused(TerminalRefusal.UNTRUSTED_SERVICE_KEY);
         }
         if (!VoucherSignatureService.verify(credential)) {
-            logger.warn("terminal warrant refused: credential signature does not verify");
-            return false;
+            return TerminalVerdict.refused(TerminalRefusal.BAD_CREDENTIAL_SIGNATURE);
         }
 
         if (!issuerId.equalsIgnoreCase(credential.getIssuerId())) {
-            logger.warn("terminal warrant refused: credential issued by another stall");
-            return false;
+            return TerminalVerdict.refused(TerminalRefusal.WRONG_STALL);
+        }
+
+        Long asOf = sale.getCredentialValidAtEpochSeconds();
+        Long expiresAt = credential.getExpiresAt();
+        if (asOf != null && expiresAt != null && asOf >= expiresAt) {
+            return TerminalVerdict.refused(TerminalRefusal.CREDENTIAL_EXPIRED);
         }
 
         String lockKey = terminalLockKey(credential.getMerchantMetadata(), issuerId);
         if (lockKey == null) {
-            return false;
+            return TerminalVerdict.refused(TerminalRefusal.NOT_A_SELLING_TERMINAL);
+        }
+        if (lockKey.equalsIgnoreCase(issuerId)) {
+            return TerminalVerdict.refused(TerminalRefusal.LOCK_IS_STALL);
         }
 
         byte[] lock = credential.getData();
         if (lock == null || lock.length != 33
                 || !Hex.toHexString(lock, 1, 32).equalsIgnoreCase(lockKey)) {
-            logger.warn("terminal warrant refused: credential is not locked to its lock_key");
-            return false;
+            return TerminalVerdict.refused(TerminalRefusal.LOCK_MISMATCH);
         }
 
-        return signatureValid(
+        if (!signatureValid(
                 lockKey.toLowerCase(Locale.ROOT),
-                saleDigest(issuerId, saleTotalMinor, faceDecimals, unit, saleNonce),
-                signatureHex);
+                saleDigest(issuerId, saleTotalMinor, sale.getFaceDecimals(), sale.getUnit(),
+                        sale.getSaleNonce()),
+                sale.getSignatureHex())) {
+            return TerminalVerdict.refused(TerminalRefusal.BAD_SALE_SIGNATURE);
+        }
+        return TerminalVerdict.VALID;
+    }
+
+    /** 2^53-1: the largest integer the wallet's {@code String(number)} renders exactly. */
+    private static final long MAX_SAFE_INTEGER = (1L << 53) - 1;
+
+    /** The most decimal places the portal accepts. */
+    private static final int MAX_FACE_DECIMALS = 18;
+
+    private static final Pattern LOWER_HEX64 = Pattern.compile("^[0-9a-f]{64}$");
+
+    /** C0 controls (US among them) and DEL. */
+    private static boolean hasControlCharacter(String value) {
+        return value.chars().anyMatch(c -> c < 0x20 || c == 0x7f);
     }
 
     /** The role a terminal needs to sell. */
     private static final String ISSUE_AND_REDEEM = "issue-and-redeem";
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    /** Strict like the wallet's {@code JSON.parse}: no trailing garbage, no duplicate keys. */
+    private static final ObjectMapper JSON = JsonMapper.builder()
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+            .build();
 
     /**
      * The {@code lock_key} of a selling terminal's metadata, or {@code null} with a log line
