@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.NonNull;
 import lombok.Value;
@@ -385,6 +387,7 @@ public final class IssuanceWarrant {
 
     /** The outcome of {@link #verifyTerminal(TerminalSale)}: valid, or one refusal reason. */
     @Value
+    @AllArgsConstructor(access = AccessLevel.PRIVATE)
     public static class TerminalVerdict {
         private static final TerminalVerdict VALID = new TerminalVerdict(null);
 
@@ -405,7 +408,9 @@ public final class IssuanceWarrant {
      * Parses a terminal credential as received on the wire (a NUT-10 secret, JSON) and
      * checks it is a {@code P2PK_VOUCHER}.
      *
-     * @throws IllegalArgumentException if it does not parse or is another kind of secret
+     * @throws IllegalArgumentException if it does not parse, is another kind of secret, or is
+     *         not byte-for-byte the canonical serialisation (no padding, extra elements or
+     *         duplicate keys)
      */
     public static P2PKVoucherSecret parseCredential(@NonNull String wireSecret) {
         Object secret;
@@ -417,6 +422,14 @@ public final class IssuanceWarrant {
         if (!(secret instanceof P2PKVoucherSecret credential)
                 || credential.getKind() != WellKnownSecret.Kind.P2PK_VOUCHER) {
             throw new IllegalArgumentException("terminal credential is not a P2PK_VOUCHER");
+        }
+        // One credential, one wire form (review N4). The parser tolerates padding, extra
+        // array elements and duplicate keys (last wins); refusing anything that does not
+        // re-serialise to the exact input closes all of them at once. toString() echoes the
+        // remembered wire string, so a setter is touched first to make it serialise afresh.
+        credential.setNonce(credential.getNonce());
+        if (!credential.toString().equals(wireSecret)) {
+            throw new IllegalArgumentException("terminal credential is not in canonical wire form");
         }
         return credential;
     }
@@ -559,9 +572,30 @@ public final class IssuanceWarrant {
 
     private static final Pattern LOWER_HEX64 = Pattern.compile("^[0-9a-f]{64}$");
 
-    /** C0 controls (US among them) and DEL. */
+    /**
+     * C0 controls (US among them), DEL, C1 controls (U+0080..U+009F), and malformed UTF-16.
+     *
+     * <p>A lone surrogate is refused because Java's UTF-8 encoder writes it as {@code ?}, so
+     * {@code "n1\uD800"} and {@code "n1?"} would share one digest and one signature, and
+     * TypeScript's {@code TextEncoder} writes U+FFFD instead (review N3). Paired surrogates,
+     * which encode cleanly, are fine.
+     */
     private static boolean hasControlCharacter(String value) {
-        return value.chars().anyMatch(c -> c < 0x20 || c == 0x7f);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c < 0x20 || (c >= 0x7f && c <= 0x9f)) {
+                return true;
+            }
+            if (Character.isHighSurrogate(c)) {
+                if (i + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(i + 1))) {
+                    return true;
+                }
+                i++;
+            } else if (Character.isLowSurrogate(c)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** The role a terminal needs to sell. */

@@ -424,6 +424,56 @@ class IssuanceWarrantTerminalTest {
     }
 
     @Test
+    @DisplayName("a lone surrogate in the nonce or unit is refused")
+    void loneSurrogateIsRefused() {
+        // Review N3. Java's UTF-8 encoder turns an unpaired surrogate into '?', so "n1\uD800"
+        // shared a signature with "n1?": two nonces, one digest, a replay past a nonce ledger.
+        // TypeScript emits U+FFFD instead, so the two sides disagreed too. Refuse it outright.
+        assertRefused(IssuanceWarrant.TerminalRefusal.MALFORMED_SALE, genuineSale()
+                .saleNonce("n1\uD800").signatureHex(sign(
+                        IssuanceWarrant.saleDigest(STALL, SALE_TOTAL, DECIMALS, UNIT, "n1?"),
+                        TILL_KEY)).build());
+        assertRefused(IssuanceWarrant.TerminalRefusal.MALFORMED_SALE,
+                genuineSale().unit("EU\uDC00").build());
+    }
+
+    @Test
+    @DisplayName("a correctly paired surrogate (an emoji) is still accepted")
+    void pairedSurrogateIsAccepted() {
+        // The N3 check must refuse only MALFORMED UTF-16, not every non-BMP character.
+        String nonce = "n1\uD83D\uDE00";
+        assertTrue(IssuanceWarrant.verifyTerminal(genuineSale().saleNonce(nonce).signatureHex(sign(
+                IssuanceWarrant.saleDigest(STALL, SALE_TOTAL, DECIMALS, UNIT, nonce), TILL_KEY))
+                .build()).isValid());
+    }
+
+    @Test
+    @DisplayName("parseCredential refuses any wire form other than the canonical one")
+    void parseCredentialRefusesNonCanonicalWireForms() {
+        // Review N4. Padding, an extra array element and a duplicated key all parsed to the
+        // same credential, so one credential had many wire forms. Only the exact form the
+        // gateway serialises is accepted now.
+        String wire = credential(STALL, "issue-and-redeem", TILL_PUBKEY, true).toString();
+        assertThrows(IllegalArgumentException.class,
+                () -> IssuanceWarrant.parseCredential("  " + wire + "\n"));
+        assertThrows(IllegalArgumentException.class,
+                () -> IssuanceWarrant.parseCredential(wire.replaceFirst("]$", ",1]")));
+        assertThrows(IllegalArgumentException.class, () -> IssuanceWarrant.parseCredential(
+                wire.replaceFirst("\"data\":", "\"data\":\"02" + STALL + "\",\"data\":")));
+    }
+
+    @Test
+    @DisplayName("TerminalVerdict cannot be constructed from outside, only by verifyTerminal")
+    void terminalVerdictHasNoPublicConstructor() {
+        // Review N5. Lombok's @Value made new TerminalVerdict(null) public, and null means
+        // valid, so any caller could mint a "valid" verdict without verifying anything.
+        for (var constructor : IssuanceWarrant.TerminalVerdict.class.getDeclaredConstructors()) {
+            assertTrue(java.lang.reflect.Modifier.isPrivate(constructor.getModifiers()),
+                    "constructor must be private: " + constructor);
+        }
+    }
+
+    @Test
     @DisplayName("metadata with a duplicated key is refused rather than last-one-wins")
     void duplicateKeyInMetadataIsRefused() {
         // Two "role" keys leave the meaning up to whichever parser reads it. Refuse instead.
