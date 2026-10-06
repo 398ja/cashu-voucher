@@ -365,6 +365,33 @@ class IssuanceWarrantTerminalTest {
     }
 
     @Test
+    @DisplayName("a credential that only the legacy truncated form verifies is refused")
+    void legacyFormCredentialIsRefused() {
+        // Review N1, the direct check. A terminal credential has no legacy form, so a
+        // signature that verifies only over the truncated bytes (here a ratio of 0.5 signed as
+        // 0) must be refused even though plain VoucherSignatureService.verify accepts it.
+        P2PKVoucherSecret secret = locked(STALL, TILL_PUBKEY,
+                metadata(STALL, "issue-and-redeem", TILL_PUBKEY));
+        secret.setTag("issuance_ratio", List.of("0.5"));
+        byte[] legacyDigest = sha256(VoucherCanonicalBytes.of(
+                secret, VoucherCanonicalBytes.NumericTagForm.TRUNCATED_TO_LONG));
+        secret.setIssuerSignature(sign(legacyDigest, SERVICE_KEY));
+        secret.setIssuerPublicKey(pubkeyOf(SERVICE_KEY));
+        assertTrue(VoucherSignatureService.verify(secret), "fixture: the legacy window accepts it");
+
+        assertRefused(IssuanceWarrant.TerminalRefusal.BAD_CREDENTIAL_SIGNATURE,
+                sale(STALL, secret, SALE_TOTAL, tillSignature(SALE_TOTAL)).build());
+    }
+
+    private static byte[] sha256(byte[] input) {
+        try {
+            return java.security.MessageDigest.getInstance("SHA-256").digest(input);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
     @DisplayName("a credential whose expires_at is signed but not an integer is refused")
     void nonIntegerExpiryIsRefusedEvenWhenSigned() {
         // Belt and braces for N1: even a credential the service really signed with a
