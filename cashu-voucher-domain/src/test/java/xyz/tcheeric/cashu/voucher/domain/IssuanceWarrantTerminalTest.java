@@ -241,7 +241,7 @@ class IssuanceWarrantTerminalTest {
 
         assertRefused(IssuanceWarrant.TerminalRefusal.CREDENTIAL_EXPIRED,
                 sale(STALL, credential, SALE_TOTAL, tillSignature(SALE_TOTAL))
-                        .credentialValidAtEpochSeconds(2_000L).build());
+                        .expiryCheck(IssuanceWarrant.ExpiryCheck.at(2_000L)).build());
     }
 
     @Test
@@ -263,7 +263,7 @@ class IssuanceWarrantTerminalTest {
 
         assertTrue(IssuanceWarrant.verifyTerminal(
                 sale(STALL, credential, SALE_TOTAL, tillSignature(SALE_TOTAL))
-                        .credentialValidAtEpochSeconds(999L).build()).isValid());
+                        .expiryCheck(IssuanceWarrant.ExpiryCheck.at(999L)).build()).isValid());
     }
 
     @Test
@@ -361,7 +361,7 @@ class IssuanceWarrantTerminalTest {
 
         assertRefused(IssuanceWarrant.TerminalRefusal.BAD_CREDENTIAL_SIGNATURE,
                 sale(STALL, IssuanceWarrant.parseCredential(tampered), SALE_TOTAL,
-                        tillSignature(SALE_TOTAL)).credentialValidAtEpochSeconds(2_000L).build());
+                        tillSignature(SALE_TOTAL)).expiryCheck(IssuanceWarrant.ExpiryCheck.at(2_000L)).build());
     }
 
     @Test
@@ -377,7 +377,50 @@ class IssuanceWarrantTerminalTest {
 
         assertRefused(IssuanceWarrant.TerminalRefusal.MALFORMED_CREDENTIAL,
                 sale(STALL, credential, SALE_TOTAL, tillSignature(SALE_TOTAL))
-                        .credentialValidAtEpochSeconds(500L).build());
+                        .expiryCheck(IssuanceWarrant.ExpiryCheck.at(500L)).build());
+    }
+
+    @Test
+    @DisplayName("a sale that does not choose an expiry check does not build")
+    void omittedExpiryCheckDoesNotBuild() {
+        // Review N2. Before, leaving the as-of instant out meant null, which meant "skip", so
+        // a caller that forgot it let expired tills sell. Now there is no default: the caller
+        // must say ExpiryCheck.at(now) or ExpiryCheck.skipOffline().
+        assertThrows(NullPointerException.class, () -> IssuanceWarrant.TerminalSale.builder()
+                .issuerId(STALL)
+                .credential(credential(STALL, "issue-and-redeem", TILL_PUBKEY, true))
+                .trustedServiceKeys(TRUSTED).saleTotalMinor(SALE_TOTAL).faceDecimals(DECIMALS)
+                .unit(UNIT).saleNonce(NONCE).signatureHex(tillSignature(SALE_TOTAL))
+                .couponFaceMinor(SALE_TOTAL).build());
+    }
+
+    @Test
+    @DisplayName("a credential with no expires_at is refused")
+    void credentialWithoutExpiryIsRefused() {
+        // Review N2. Spec section 2.7 says credentials last 365 days. One with no expiry at all
+        // would sell forever, so it is malformed, not immortal.
+        P2PKVoucherSecret credential = signed(locked(STALL, TILL_PUBKEY,
+                metadata(STALL, "issue-and-redeem", TILL_PUBKEY), null));
+
+        assertRefused(IssuanceWarrant.TerminalRefusal.MALFORMED_CREDENTIAL,
+                sale(STALL, credential, SALE_TOTAL, tillSignature(SALE_TOTAL))
+                        .expiryCheck(IssuanceWarrant.ExpiryCheck.at(500L)).build());
+    }
+
+    @Test
+    @DisplayName("at the exact expiry second the credential is still valid, as at the mint")
+    void expiryBoundaryMatchesMint() {
+        // Review N6. cashu-mint's VoucherSpendingCondition refuses only when now > expires_at,
+        // so expires_at itself is the last valid second. The portal must not be one second
+        // stricter than the mint that will later honour the coupon.
+        P2PKVoucherSecret credential = expiringCredential(1_000L);
+
+        assertTrue(IssuanceWarrant.verifyTerminal(
+                sale(STALL, credential, SALE_TOTAL, tillSignature(SALE_TOTAL))
+                        .expiryCheck(IssuanceWarrant.ExpiryCheck.at(1_000L)).build()).isValid());
+        assertRefused(IssuanceWarrant.TerminalRefusal.CREDENTIAL_EXPIRED,
+                sale(STALL, credential, SALE_TOTAL, tillSignature(SALE_TOTAL))
+                        .expiryCheck(IssuanceWarrant.ExpiryCheck.at(1_001L)).build());
     }
 
     @Test
@@ -440,7 +483,8 @@ class IssuanceWarrantTerminalTest {
                 .unit(UNIT)
                 .saleNonce(NONCE)
                 .signatureHex(signature)
-                .couponFaceMinor(saleTotal);
+                .couponFaceMinor(saleTotal)
+                .expiryCheck(IssuanceWarrant.ExpiryCheck.skipOffline());
     }
 
     private static IssuanceWarrant.TerminalSale.TerminalSaleBuilder genuineSale() {
@@ -473,13 +517,24 @@ class IssuanceWarrantTerminalTest {
         return sign ? signed(secret) : secret;
     }
 
+    /** A year-ish validity far in the future: every genuine credential carries an expiry. */
+    private static final long FAR_EXPIRY = 4_000_000_000L;
+
     private static P2PKVoucherSecret locked(String issuerId, String xOnlyLockKey, String metadata) {
+        return locked(issuerId, xOnlyLockKey, metadata, FAR_EXPIRY);
+    }
+
+    private static P2PKVoucherSecret locked(
+            String issuerId, String xOnlyLockKey, String metadata, Long expiresAt) {
         P2PKVoucherSecret secret = new P2PKVoucherSecret(Hex.decode("02" + xOnlyLockKey));
         secret.setVoucherId(UUID.randomUUID().toString());
         secret.setIssuerId(issuerId);
         secret.setUnit("sat");
         secret.setFaceValue(1L);
         secret.setMerchantMetadata(metadata);
+        if (expiresAt != null) {
+            secret.setExpiresAt(expiresAt);
+        }
         return secret;
     }
 

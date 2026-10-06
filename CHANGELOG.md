@@ -33,8 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   metadata is a terminal with role `issue-and-redeem`, it is P2PK-locked to its `lock_key`, and
   the sale signature verifies against `lock_key`. Liveness (revocation) is not checked here.
   The portal checks it at issuance.
-  Expiry is checked when the caller passes `credentialValidAtEpochSeconds` (the portal passes
-  now; an offline verifier passes null). Inputs are validated: lowercase-hex `issuerId`, no
+  Expiry is a required builder choice: `ExpiryCheck.at(nowEpochSeconds)` at issuance or
+  `ExpiryCheck.skipOffline()` for an issued coupon. A credential without a canonical integer
+  `expires_at` is refused, the credential signature is verified with no legacy-canonical window,
+  and `expires_at` is the last valid second, as at the mint. Inputs are validated: lowercase-hex `issuerId`, no
   control characters in `unit` or `saleNonce`, sale total at most 2^53-1, decimals 0..18, and a
   `lock_key` equal to the stall is refused. The caller still checks the coupon's denomination.
 

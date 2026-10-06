@@ -257,10 +257,14 @@ P2PKVoucherSecret parseCredential(String wireSecret) // throws unless the kind i
    total is 0..2^53-1 and `faceDecimals` is 0..18 (`MALFORMED_SALE`).
 2. The coupon's face value fits under the sale total (`COUPON_ABOVE_SALE`).
 3. The credential's signing key is in `trustedServiceKeys` (`UNTRUSTED_SERVICE_KEY`; an empty
-   list refuses everything) and its signature verifies (`BAD_CREDENTIAL_SIGNATURE`).
+   list refuses everything) and its signature verifies over the current canonical form only,
+   with no legacy-canonical window (`BAD_CREDENTIAL_SIGNATURE`). Its `expires_at` is present
+   and a canonical integer (`MALFORMED_CREDENTIAL`).
 4. The credential's `issuer_id` equals `issuerId` (`WRONG_STALL`).
-5. If `credentialValidAtEpochSeconds` is set, the credential has not expired by then
-   (`CREDENTIAL_EXPIRED`). The portal passes now. An offline verifier passes null.
+5. The required `expiryCheck` is honoured (`CREDENTIAL_EXPIRED`). The portal passes
+   `ExpiryCheck.at(nowEpochSeconds)`; an offline verifier of an issued coupon passes
+   `ExpiryCheck.skipOffline()`. There is no default. `expires_at` is the last valid second
+   (refused when now > expires_at), the same boundary as cashu-mint's `VoucherSpendingCondition`.
 6. Its `merchant_metadata` is `{"terminal": true, "stall_pubkey": issuerId, "role": "issue-and-redeem", "lock_key": ...}`,
    parsed strictly (`NOT_A_SELLING_TERMINAL`), and `lock_key` is not `issuerId` (`LOCK_IS_STALL`).
 7. The credential's P2PK lock is `lock_key` (`LOCK_MISMATCH`).

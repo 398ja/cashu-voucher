@@ -295,7 +295,7 @@ public final class IssuanceWarrant {
         MALFORMED_CREDENTIAL,
         /** The credential's {@code issuer_id} is not the stall. */
         WRONG_STALL,
-        /** The credential had expired at {@code credentialValidAtEpochSeconds}. */
+        /** The credential had expired at the {@link ExpiryCheck#at(long)} instant. */
         CREDENTIAL_EXPIRED,
         /** The metadata is not a terminal of this stall with role {@code issue-and-redeem}. */
         NOT_A_SELLING_TERMINAL,
@@ -336,11 +336,51 @@ public final class IssuanceWarrant {
         /** THIS coupon's face value, which must fit inside the sale. */
         long couponFaceMinor;
         /**
-         * The instant, in epoch seconds, at which the credential must be unexpired, or
-         * {@code null} to skip the expiry check. The portal passes now at issuance; an offline
-         * verifier of an already-issued coupon passes {@code null}.
+         * How to treat the credential's expiry. Required, so leaving it out fails at
+         * {@code build()} instead of silently skipping the check (review N2).
          */
-        Long credentialValidAtEpochSeconds;
+        @NonNull ExpiryCheck expiryCheck;
+    }
+
+    /**
+     * The caller's explicit choice about credential expiry.
+     *
+     * <p>The portal, warranting a NEW sale, uses {@link #at(long)} with now. An offline
+     * verifier of an already-issued coupon uses {@link #skipOffline()}, because a coupon sold
+     * before the till expired rightly stays valid. There is no default.
+     *
+     * <p><b>Boundary.</b> {@code expires_at} is the last valid second: refused only when
+     * {@code epochSeconds > expires_at}, the same as cashu-mint's
+     * {@code VoucherSpendingCondition} ({@code VoucherMetadata.isExpired}), so the portal and
+     * the mint agree to the second.
+     */
+    public static final class ExpiryCheck {
+        private static final ExpiryCheck SKIP = new ExpiryCheck(null);
+
+        private final Long epochSeconds;
+
+        private ExpiryCheck(Long epochSeconds) {
+            this.epochSeconds = epochSeconds;
+        }
+
+        /** Refuse the credential if it had expired at {@code epochSeconds} (seconds, not ms). */
+        public static ExpiryCheck at(long epochSeconds) {
+            return new ExpiryCheck(epochSeconds);
+        }
+
+        /** Skip the expiry instant: for verifying an already-issued coupon offline. */
+        public static ExpiryCheck skipOffline() {
+            return SKIP;
+        }
+
+        boolean expiredAt(long expiresAt) {
+            return epochSeconds != null && epochSeconds > expiresAt;
+        }
+
+        @Override
+        public String toString() {
+            return epochSeconds == null ? "ExpiryCheck.skipOffline()" : "ExpiryCheck.at(" + epochSeconds + ")";
+        }
     }
 
     /** The outcome of {@link #verifyTerminal(TerminalSale)}: valid, or one refusal reason. */
@@ -399,7 +439,7 @@ public final class IssuanceWarrant {
      *       allow-list, anyone can mint themselves a credential with their own key.</li>
      *   <li><b>{@code issuer_id == issuerId}.</b> A till sells only for the stall that issued
      *       it.</li>
-     *   <li><b>Not expired at {@code credentialValidAtEpochSeconds}</b>, when that is given.</li>
+     *   <li><b>Not expired per {@link TerminalSale#getExpiryCheck()}</b>.</li>
      *   <li><b>The metadata is a terminal with {@code role == issue-and-redeem}</b>,
      *       {@code terminal} the boolean {@code true}, {@code stall_pubkey == issuerId}, and
      *       {@code lock_key != issuerId}.</li>
@@ -411,10 +451,11 @@ public final class IssuanceWarrant {
      * <p><b>Not checked: liveness.</b> A revoked credential still verifies, because revocation
      * is a NUT-07 spend only the gateway sees; the portal checks it at issuance.
      *
-     * <p><b>Expiry is checked only when asked.</b> The portal passes now as
-     * {@code credentialValidAtEpochSeconds}, so an expired credential cannot warrant a new
-     * sale. An offline verifier of an already-issued coupon passes {@code null}, because a
-     * coupon sold before expiry rightly stays valid.
+     * <p><b>Expiry is an explicit choice.</b> The credential must carry a canonical integer
+     * {@code expires_at}. The portal passes {@link ExpiryCheck#at(long)} with now, so an
+     * expired credential cannot warrant a new sale. An offline verifier of an already-issued
+     * coupon passes {@link ExpiryCheck#skipOffline()}, because a coupon sold before expiry
+     * rightly stays valid. The boundary matches the mint: valid through {@code expires_at}.
      *
      * <p><b>Not checked: the denomination.</b> The coupon's own unit and decimals are not
      * inputs, so the caller must check they equal {@code unit} and {@code faceDecimals}.
@@ -454,7 +495,9 @@ public final class IssuanceWarrant {
         // parse, and null means "never expires". An expiry we cannot read is malformed.
         WellKnownSecret.Tag expiryTag = credential.getTag(VoucherTags.EXPIRES_AT);
         Long expiresAt = canonicalEpochSeconds(expiryTag);
-        if (expiryTag != null && expiresAt == null) {
+        // Absent is refused too: credentials last 365 days (spec section 2.7), and one with no
+        // expiry would sell forever (review N2).
+        if (expiresAt == null) {
             return TerminalVerdict.refused(TerminalRefusal.MALFORMED_CREDENTIAL);
         }
 
@@ -462,8 +505,7 @@ public final class IssuanceWarrant {
             return TerminalVerdict.refused(TerminalRefusal.WRONG_STALL);
         }
 
-        Long asOf = sale.getCredentialValidAtEpochSeconds();
-        if (asOf != null && expiresAt != null && asOf >= expiresAt) {
+        if (sale.getExpiryCheck().expiredAt(expiresAt)) {
             return TerminalVerdict.refused(TerminalRefusal.CREDENTIAL_EXPIRED);
         }
 
