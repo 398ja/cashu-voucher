@@ -524,6 +524,43 @@ class IssuanceWarrantTerminalTest {
                 sale(STALL, parsed, SALE_TOTAL, tillSignature(SALE_TOTAL)).build()).isValid());
     }
 
+    /**
+     * A terminal credential exactly as cashu-lib 0.30.6 serialises it, frozen as text. It has
+     * the till lock, a stall co-key, n_sigs, sigflag, an emoji in the till name and a real
+     * service signature (fixed keys 0x01.., 0x02.., 0x03.. for service, stall and till).
+     */
+    private static final String GOLDEN_CREDENTIAL_WIRE = "[\"P2PK_VOUCHER\",{"
+            + "\"nonce\":\"9a8b7c6d5e4f30211203f4e5d6c7b8a9\","
+            + "\"data\":\"02531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337\","
+            + "\"tags\":[[\"n_sigs\",\"1\"],[\"sigflag\",\"SIG_ALL\"],"
+            + "[\"pubkeys\",\"024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766\"],"
+            + "[\"voucher_id\",\"6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f\"],"
+            + "[\"issuer\",\"4d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766\"],"
+            + "[\"unit\",\"sat\"],[\"face_value\",\"1\"],[\"expires_at\",\"4000000000\"],"
+            + "[\"merchant_metadata\",\"{\\\"terminal\\\":true,"
+            + "\\\"stall_pubkey\\\":\\\"4d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766\\\","
+            + "\\\"role\\\":\\\"issue-and-redeem\\\","
+            + "\\\"lock_key\\\":\\\"531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337\\\","
+            + "\\\"name\\\":\\\"Pizza till \uD83C\uDF55\\\"}\"],"
+            + "[\"issuer_sig\",\"e83f6f38db9679b773c9d6c6fc01cecbcecd6411c43d35569854094c44ef06cf"
+            + "85da8aad04444bcdea87132097e535fc9a45dc48faee439b101c4efef0f62b82\"],"
+            + "[\"issuer_pubkey\",\"1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f\"]]}]";
+
+    @Test
+    @DisplayName("a frozen credential wire string still parses byte-exact and still verifies")
+    void parseCredentialAcceptsGoldenWireString() {
+        // Review r3 M1. parseCredential only accepts what this build's cashu-lib serialiser
+        // would write, and credentials live for a year. If a cashu-lib upgrade changes that
+        // output (say n_sigs as a number, or the emoji escaped), every credential already in
+        // a till would be refused in production. This literal was written by today's
+        // serialiser, so such a change fails here in CI instead.
+        P2PKVoucherSecret parsed = IssuanceWarrant.parseCredential(GOLDEN_CREDENTIAL_WIRE);
+
+        assertEquals(GOLDEN_CREDENTIAL_WIRE, parsed.toString());
+        assertTrue(VoucherSignatureService.verifyStrict(parsed),
+                "the frozen service signature must still verify over the parsed credential");
+    }
+
     @Test
     @DisplayName("parseCredential refuses a secret that is not a P2PK_VOUCHER")
     void parseCredentialRefusesOtherKinds() {

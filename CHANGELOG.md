@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   control characters in `unit` or `saleNonce`, sale total at most 2^53-1, decimals 0..18, and a
   `lock_key` equal to the stall is refused. The caller still checks the coupon's denomination.
 
+  `parseCredential` accepts only the exact bytes cashu-lib's serialiser would write, so its
+  canonical form is tied to that serialiser. Whoever mints credentials (gc) and whoever parses
+  them (the portal) must run the same cashu-lib serialiser. A frozen golden wire string in the
+  tests means a cashu-lib change to that output fails this library's CI rather than refusing
+  every outstanding credential in production.
+
   `Form.DELEGATED` is unchanged. It stays the card-purchase form (#52), because its nonce is
   spent once, while one terminal Sell may be split into several parts under one warrant.
 

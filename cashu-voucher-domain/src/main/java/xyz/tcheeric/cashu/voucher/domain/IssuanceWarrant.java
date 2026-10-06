@@ -408,6 +408,14 @@ public final class IssuanceWarrant {
      * Parses a terminal credential as received on the wire (a NUT-10 secret, JSON) and
      * checks it is a {@code P2PK_VOUCHER}.
      *
+     * <p><b>The canonical form is whatever this build's cashu-lib serialiser writes.</b>
+     * The input must re-serialise byte-for-byte through cashu-lib's
+     * {@code WellKnownSecretSerializer}, so the side that mints credentials and the side that
+     * parses them must run the same cashu-lib serialiser. A cashu-lib change to that output
+     * (for example {@code n_sigs} as a number, or escaped non-ASCII) would make every
+     * outstanding credential fail here. {@code parseCredentialAcceptsGoldenWireString} pins
+     * the current form so such a change breaks this library's CI first.
+     *
      * @throws IllegalArgumentException if it does not parse, is another kind of secret, or is
      *         not byte-for-byte the canonical serialisation (no padding, extra elements or
      *         duplicate keys)

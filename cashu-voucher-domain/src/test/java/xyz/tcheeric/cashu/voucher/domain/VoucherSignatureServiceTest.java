@@ -846,6 +846,18 @@ class VoucherSignatureServiceTest {
         }
 
         /*
+         * Review r3 L1. The third integral tag. A rewrite of face_decimals from 2 to 2.5
+         * truncates back to 2 in the legacy form, so without the gate the signature still
+         * verified while readers disagree on the scale (Java drops it, the wallet keeps 2.5).
+         */
+        @Test
+        @DisplayName("the legacy window does not accept a fractional face_decimals rewrite")
+        void legacyWindowRefusesFractionalFaceDecimals() {
+            assertThat(verifiesAfter("[\"face_decimals\",\"2\"]", "[\"face_decimals\",\"2.5\"]"))
+                    .isFalse();
+        }
+
+        /*
          * verifyStrict is for kinds with no legacy form at all, terminal credentials among
          * them. The live pre-fix staging voucher must FAIL it, or it is not strict.
          */
