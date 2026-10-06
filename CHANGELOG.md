@@ -23,6 +23,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a voucher signature. Every release from 0.12.0 to 0.15.0 shipped that way.
 
 
+### Added
+
+- **A `terminal` issuance warrant (imani-wallet#160, spec §5.5).** `IssuanceWarrant.Form.TERMINAL`
+  (wire `terminal`) and `IssuanceWarrant.verifyTerminal(TerminalSale)`, which returns a `TerminalVerdict` carrying a
+  `TerminalRefusal` reason, plus `IssuanceWarrant.parseCredential(wireSecret)`. A till's key `K` signs the existing sale digest, and the warrant carries
+  the terminal credential the gateway minted to `K`. Verification is offline: the credential's
+  issuer signature verifies under a trusted service key, its `issuer_id` is the stall, its
+  metadata is a terminal with role `issue-and-redeem`, it is P2PK-locked to its `lock_key`, and
+  the sale signature verifies against `lock_key`. Liveness (revocation) is not checked here.
+  The portal checks it at issuance.
+  Expiry is a required builder choice: `ExpiryCheck.at(nowEpochSeconds)` at issuance or
+  `ExpiryCheck.skipOffline()` for an issued coupon. A credential without a canonical integer
+  `expires_at` is refused, the credential signature is verified with no legacy-canonical window,
+  and `expires_at` is the last valid second, as at the mint. Inputs are validated: lowercase-hex `issuerId`, no
+  control characters in `unit` or `saleNonce`, sale total at most 2^53-1, decimals 0..18, and a
+  `lock_key` equal to the stall is refused. The caller still checks the coupon's denomination.
+
+  `parseCredential` accepts only the exact bytes cashu-lib's serialiser would write, so its
+  canonical form is tied to that serialiser. Whoever mints credentials (gc) and whoever parses
+  them (the portal) must run the same cashu-lib serialiser. A frozen golden wire string in the
+  tests means a cashu-lib change to that output fails this library's CI rather than refusing
+  every outstanding credential in production.
+
+  `Form.DELEGATED` is unchanged. It stays the card-purchase form (#52), because its nonce is
+  spent once, while one terminal Sell may be split into several parts under one warrant.
+
 ## [0.15.0] - 2026-09-28
 
 ### Added
