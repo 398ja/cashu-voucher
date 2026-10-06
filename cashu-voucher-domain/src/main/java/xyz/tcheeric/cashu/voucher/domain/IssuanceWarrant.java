@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
 import xyz.tcheeric.cashu.common.nut11.P2PKVoucherSecret;
+import xyz.tcheeric.cashu.common.nut18.VoucherTags;
 import xyz.tcheeric.cashu.common.util.SecretUtil;
 
 import java.nio.charset.StandardCharsets;
@@ -290,6 +291,8 @@ public final class IssuanceWarrant {
         UNTRUSTED_SERVICE_KEY,
         /** The credential's service signature does not verify. */
         BAD_CREDENTIAL_SIGNATURE,
+        /** The credential's {@code expires_at} is missing or not a canonical integer. */
+        MALFORMED_CREDENTIAL,
         /** The credential's {@code issuer_id} is not the stall. */
         WRONG_STALL,
         /** The credential had expired at {@code credentialValidAtEpochSeconds}. */
@@ -440,8 +443,19 @@ public final class IssuanceWarrant {
         if (servicePubkey == null || !containsIgnoreCase(trustedServiceKeys, servicePubkey)) {
             return TerminalVerdict.refused(TerminalRefusal.UNTRUSTED_SERVICE_KEY);
         }
-        if (!VoucherSignatureService.verify(credential)) {
+        // Strict: terminal credentials were all minted after the canonical form existed, so
+        // none was signed in the legacy truncated form. Offering the legacy window here would
+        // let a holder rewrite expires_at "1000" to "1000.5" and keep a valid signature
+        // (review N1).
+        if (!VoucherSignatureService.verifyStrict(credential)) {
             return TerminalVerdict.refused(TerminalRefusal.BAD_CREDENTIAL_SIGNATURE);
+        }
+        // Read the raw tag, not getExpiresAt(): the getter returns null for a value it cannot
+        // parse, and null means "never expires". An expiry we cannot read is malformed.
+        WellKnownSecret.Tag expiryTag = credential.getTag(VoucherTags.EXPIRES_AT);
+        Long expiresAt = canonicalEpochSeconds(expiryTag);
+        if (expiryTag != null && expiresAt == null) {
+            return TerminalVerdict.refused(TerminalRefusal.MALFORMED_CREDENTIAL);
         }
 
         if (!issuerId.equalsIgnoreCase(credential.getIssuerId())) {
@@ -449,7 +463,6 @@ public final class IssuanceWarrant {
         }
 
         Long asOf = sale.getCredentialValidAtEpochSeconds();
-        Long expiresAt = credential.getExpiresAt();
         if (asOf != null && expiresAt != null && asOf >= expiresAt) {
             return TerminalVerdict.refused(TerminalRefusal.CREDENTIAL_EXPIRED);
         }
@@ -476,6 +489,24 @@ public final class IssuanceWarrant {
             return TerminalVerdict.refused(TerminalRefusal.BAD_SALE_SIGNATURE);
         }
         return TerminalVerdict.VALID;
+    }
+
+    private static final Pattern CANONICAL_INTEGER = Pattern.compile("^(0|[1-9][0-9]{0,18})$");
+
+    /** The tag's single value as epoch seconds, or {@code null} if absent or not canonical. */
+    private static Long canonicalEpochSeconds(WellKnownSecret.Tag tag) {
+        if (tag == null || tag.getValues() == null || tag.getValues().size() != 1) {
+            return null;
+        }
+        String raw = String.valueOf(tag.getValues().get(0));
+        if (!CANONICAL_INTEGER.matcher(raw).matches()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw);
+        } catch (NumberFormatException overflow) {
+            return null;
+        }
     }
 
     /** 2^53-1: the largest integer the wallet's {@code String(number)} renders exactly. */

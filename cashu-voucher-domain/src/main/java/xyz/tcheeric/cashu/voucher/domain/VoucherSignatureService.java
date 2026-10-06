@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
+import xyz.tcheeric.cashu.common.nut18.VoucherTags;
 import xyz.tcheeric.cashu.voucher.domain.VoucherCanonicalBytes.NumericTagForm;
 
 import java.security.MessageDigest;
@@ -193,6 +194,70 @@ public final class VoucherSignatureService {
             @NonNull byte[] signature,
             @NonNull String issuerPublicKeyHex
     ) {
+        return verify(secret, signature, issuerPublicKeyHex, LEGACY_CANONICAL_ENABLED);
+    }
+
+    /**
+     * Verifies a voucher secret's signature over the CURRENT canonical form only, with no
+     * legacy-canonical window.
+     *
+     * <p>For secrets that were all minted after the canonical form existed, such as terminal
+     * credentials. The legacy window exists for live pre-fix vouchers; offering it to a kind
+     * that never had a legacy form only offers the malleability (cashu-voucher#54 review N1).
+     *
+     * @param secret the voucher secret with signature and public key tags set
+     * @return true only if the signature verifies over the current canonical bytes
+     */
+    public static boolean verifyStrict(@NonNull WellKnownSecret secret) {
+        String signatureHex = VoucherMetadata.issuerSignature(secret);
+        String publicKeyHex = VoucherMetadata.issuerPublicKey(secret);
+        if (signatureHex == null || publicKeyHex == null) {
+            logger.warn("Cannot verify unsigned voucher {}", VoucherMetadata.voucherId(secret));
+            return false;
+        }
+        try {
+            return verify(secret, Hex.decode(signatureHex), publicKeyHex, false);
+        } catch (Exception e) {
+            logger.warn("Signature verification failed for voucher {}: {}",
+                    VoucherMetadata.voucherId(secret), e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Tags that every genuine voucher, legacy ones included, carries as integers. Only
+     * {@code issuance_ratio} was ever fractional before the fix, so only it was ever truncated
+     * by the legacy form. A fraction in any of these under the legacy form is not a pre-fix
+     * voucher, it is a rewrite chosen so the truncation hashes like the signed integer while
+     * {@code Long.parseLong} readers see no value at all: an expiry that vanishes, a face
+     * value that vanishes (cashu-voucher#54 review N1, audit of the offline paths).
+     */
+    private static final java.util.List<String> INTEGRAL_TAGS = java.util.List.of(
+            VoucherTags.FACE_VALUE, VoucherTags.EXPIRES_AT, VoucherTags.FACE_DECIMALS);
+
+    private static boolean integralTagsAreIntegers(WellKnownSecret secret) {
+        for (String key : INTEGRAL_TAGS) {
+            WellKnownSecret.Tag tag = secret.getTag(key);
+            if (tag == null || tag.getValues() == null) {
+                continue;
+            }
+            for (Object value : tag.getValues()) {
+                try {
+                    Long.parseLong(String.valueOf(value));
+                } catch (NumberFormatException e) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean verify(
+            WellKnownSecret secret,
+            byte[] signature,
+            String issuerPublicKeyHex,
+            boolean allowLegacy
+    ) {
         try {
             if (signature.length != SCHNORR_SIGNATURE_LENGTH) {
                 logger.warn("Invalid signature length for voucher {}: expected {} bytes, got {}",
@@ -234,7 +299,7 @@ public final class VoucherSignatureService {
             // — the issuer's key is not here — so they must still verify until they
             // expire. Only reached when the current form has already failed, so a voucher
             // signed the new way never pays for this.
-            if (!valid && LEGACY_CANONICAL_ENABLED) {
+            if (!valid && allowLegacy && integralTagsAreIntegers(secret)) {
                 byte[] legacyHash = sha256(
                         VoucherCanonicalBytes.of(secret, NumericTagForm.TRUNCATED_TO_LONG));
                 valid = Schnorr.verify(legacyHash, publicKeyBytes, signature);

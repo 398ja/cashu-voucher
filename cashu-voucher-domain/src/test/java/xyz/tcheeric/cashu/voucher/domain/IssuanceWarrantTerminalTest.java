@@ -348,6 +348,39 @@ class IssuanceWarrantTerminalTest {
     }
 
     @Test
+    @DisplayName("rewriting expires_at to a fraction cannot strip an expired credential's expiry")
+    void fractionalExpiryRewriteIsRefused() {
+        // Review N1. The till operator holds the credential. Rewriting "1000" to "1000.5" made
+        // the legacy truncated form hash the same bytes, so the service signature still
+        // verified, while getExpiresAt() could no longer parse it and returned null, so the
+        // expired till kept selling. Terminal credentials postdate the canonical form, so
+        // the signature must verify strictly and this rewrite must fail it.
+        String wire = expiringCredential(1_000L).toString();
+        String tampered = wire.replace("[\"expires_at\",\"1000\"]", "[\"expires_at\",\"1000.5\"]");
+        assertFalse(tampered.equals(wire), "fixture must actually rewrite the tag");
+
+        assertRefused(IssuanceWarrant.TerminalRefusal.BAD_CREDENTIAL_SIGNATURE,
+                sale(STALL, IssuanceWarrant.parseCredential(tampered), SALE_TOTAL,
+                        tillSignature(SALE_TOTAL)).credentialValidAtEpochSeconds(2_000L).build());
+    }
+
+    @Test
+    @DisplayName("a credential whose expires_at is signed but not an integer is refused")
+    void nonIntegerExpiryIsRefusedEvenWhenSigned() {
+        // Belt and braces for N1: even a credential the service really signed with a
+        // fractional expires_at must not be read as "no expiry". An expiry we cannot read
+        // is a malformed credential, not an immortal one.
+        P2PKVoucherSecret secret = locked(STALL, TILL_PUBKEY,
+                metadata(STALL, "issue-and-redeem", TILL_PUBKEY));
+        secret.setTag("expires_at", List.of("1000.5"));
+        P2PKVoucherSecret credential = signed(secret);
+
+        assertRefused(IssuanceWarrant.TerminalRefusal.MALFORMED_CREDENTIAL,
+                sale(STALL, credential, SALE_TOTAL, tillSignature(SALE_TOTAL))
+                        .credentialValidAtEpochSeconds(500L).build());
+    }
+
+    @Test
     @DisplayName("metadata with a duplicated key is refused rather than last-one-wins")
     void duplicateKeyInMetadataIsRefused() {
         // Two "role" keys leave the meaning up to whichever parser reads it. Refuse instead.
