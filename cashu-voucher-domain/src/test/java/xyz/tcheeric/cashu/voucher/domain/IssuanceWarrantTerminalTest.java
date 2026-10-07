@@ -570,6 +570,173 @@ class IssuanceWarrantTerminalTest {
         assertThrows(IllegalArgumentException.class, () -> IssuanceWarrant.parseCredential("nope"));
     }
 
+    // ------------------------------------------------- 0.16.1: one reading per credential
+
+    /** The genuine credential's wire form, for tests that tamper with the text itself. */
+    private static String genuineWire() {
+        return credential(STALL, "issue-and-redeem", TILL_PUBKEY, true).toString();
+    }
+
+    private static IssuanceWarrant.TerminalVerdict verifyWire(String wire) {
+        return IssuanceWarrant.verifyTerminal(
+                sale(STALL, IssuanceWarrant.parseCredential(wire), SALE_TOTAL,
+                        tillSignature(SALE_TOTAL)).build());
+    }
+
+    @Test
+    @DisplayName("an extra value on the issuer_pubkey row is refused, not read as its first value")
+    void extraValueOnIssuerPubkeyRowIsRefused() {
+        // The getter returned the first value, so ["issuer_pubkey", trusted, "x"] verified here
+        // while the wallet, which reads a row only when it has exactly one value, refused it.
+        // The two verifiers must agree, and the strict reading is the one that refuses.
+        String wire = genuineWire();
+        String tampered = wire.replaceFirst("(\\[\"issuer_pubkey\",\"[0-9a-f]{64}\")",
+                "$1,\"x\"");
+        assertFalse(tampered.equals(wire), "fixture must actually add a value");
+
+        assertEquals(IssuanceWarrant.TerminalRefusal.UNTRUSTED_SERVICE_KEY,
+                verifyWire(tampered).getRefusal());
+    }
+
+    @Test
+    @DisplayName("an extra value on the issuer_sig row is refused, not read as its first value")
+    void extraValueOnIssuerSigRowIsRefused() {
+        // Same as the pubkey row: the signature row must hold one signature and nothing else.
+        String wire = genuineWire();
+        String tampered = wire.replaceFirst("(\\[\"issuer_sig\",\"[0-9a-f]{128}\")",
+                "$1,\"x\"");
+        assertFalse(tampered.equals(wire), "fixture must actually add a value");
+
+        assertEquals(IssuanceWarrant.TerminalRefusal.BAD_CREDENTIAL_SIGNATURE,
+                verifyWire(tampered).getRefusal());
+    }
+
+    @Test
+    @DisplayName("a signed issuer row with two values is refused, even though the first is ours")
+    void extraValueOnSignedIssuerRowIsRefused() {
+        // The service really signed ["issuer", stall, "x"]. Java read the stall and accepted;
+        // the wallet saw a row that is not one stall and refused. Two values are no stall.
+        P2PKVoucherSecret secret = locked(STALL, TILL_PUBKEY,
+                metadata(STALL, "issue-and-redeem", TILL_PUBKEY));
+        secret.setTag("issuer", List.of(STALL, "x"));
+        P2PKVoucherSecret credential = signed(secret);
+
+        assertRefused(IssuanceWarrant.TerminalRefusal.WRONG_STALL,
+                sale(STALL, credential, SALE_TOTAL, tillSignature(SALE_TOTAL)).build());
+    }
+
+    @Test
+    @DisplayName("a signed merchant_metadata row with two values is refused")
+    void extraValueOnMetadataRowIsRefused() {
+        // A second metadata document on the same row is a second claim about what the till is.
+        P2PKVoucherSecret secret = locked(STALL, TILL_PUBKEY,
+                metadata(STALL, "issue-and-redeem", TILL_PUBKEY));
+        secret.setTag("merchant_metadata", List.of(metadata(STALL, "issue-and-redeem", TILL_PUBKEY),
+                metadata(STALL, "redeem-only", TILL_PUBKEY)));
+        P2PKVoucherSecret credential = signed(secret);
+
+        assertRefused(IssuanceWarrant.TerminalRefusal.NOT_A_SELLING_TERMINAL,
+                sale(STALL, credential, SALE_TOTAL, tillSignature(SALE_TOTAL)).build());
+    }
+
+    @Test
+    @DisplayName("every repeated tag row is refused at parse time, whichever tag it is")
+    void duplicateTagRowsAreRefused() {
+        // Two rows of one tag are two readings: which one a verifier sees depends on whether it
+        // takes the first or the last. cashu-lib refuses a repeated key; pin that for every row
+        // a terminal check reads, and for one it does not.
+        String wire = genuineWire();
+        String[] rows = {
+                "[\"issuer_pubkey\",\"" + pubkeyOf(THIEF_KEY) + "\"]",
+                "[\"issuer_sig\",\"" + "00".repeat(64) + "\"]",
+                "[\"issuer\",\"" + OTHER_STALL + "\"]",
+                "[\"merchant_metadata\",\"{}\"]",
+                "[\"expires_at\",\"1\"]",
+                "[\"voucher_id\",\"x\"]",
+                "[\"unit\",\"sat\"]",
+                "[\"memo\",\"a\"],[\"memo\",\"b\"]",
+        };
+        for (String row : rows) {
+            String first = wire.replaceFirst("\"tags\":\\[", "\"tags\":[" + row.replace("\\", "\\\\").replace("$", "\\$") + ",");
+            assertFalse(first.equals(wire), "fixture must actually add " + row);
+            assertThrows(IllegalArgumentException.class,
+                    () -> IssuanceWarrant.parseCredential(first), "row first: " + row);
+            String last = wire.replaceFirst("\\]\\]\\}\\]$", "]," + row.replace("$", "\\$") + "]}]");
+            assertFalse(last.equals(wire), "fixture must actually add " + row);
+            assertThrows(IllegalArgumentException.class,
+                    () -> IssuanceWarrant.parseCredential(last), "row last: " + row);
+        }
+    }
+
+    @Test
+    @DisplayName("data must be lowercase hex with a 02 or 03 prefix")
+    void dataMustBeLowercaseCompressedKey() {
+        // The wallet once accepted "04..", "05.." and uppercase data, and Java refused them.
+        // Both now take only what the gateway writes: lowercase, compressed, 02 or 03.
+        String wire = genuineWire();
+        String data = "02" + TILL_PUBKEY;
+        for (String bad : new String[] {"04" + TILL_PUBKEY, "05" + TILL_PUBKEY,
+                data.toUpperCase(Locale.ROOT),
+                "02" + TILL_PUBKEY.substring(0, 10).toUpperCase(Locale.ROOT) + TILL_PUBKEY.substring(10)}) {
+            String tampered = wire.replace("\"data\":\"" + data + "\"", "\"data\":\"" + bad + "\"");
+            assertFalse(tampered.equals(wire), "fixture must actually rewrite data to " + bad);
+            assertThrows(IllegalArgumentException.class,
+                    () -> IssuanceWarrant.parseCredential(tampered), bad);
+        }
+        // 03 is the other valid parity and is still a well-formed credential.
+        String odd = wire.replace("\"data\":\"" + data + "\"", "\"data\":\"03" + TILL_PUBKEY + "\"");
+        IssuanceWarrant.parseCredential(odd);
+    }
+
+    @Test
+    @DisplayName("an uppercase lock_key is refused, as in the wallet")
+    void uppercaseLockKeyIsRefused() {
+        // lock_key is a key the gateway writes in lowercase. Accepting any case gave one
+        // credential several spellings; both verifiers now take exactly one.
+        P2PKVoucherSecret credential = signed(locked(STALL, TILL_PUBKEY,
+                metadata(STALL, "issue-and-redeem", TILL_PUBKEY.toUpperCase(Locale.ROOT))));
+
+        assertRefused(IssuanceWarrant.TerminalRefusal.NOT_A_SELLING_TERMINAL,
+                sale(STALL, credential, SALE_TOTAL, tillSignature(SALE_TOTAL)).build());
+    }
+
+    @Test
+    @DisplayName("a lone surrogate inside a signed tag is refused at parse time")
+    void loneSurrogateInSignedTagIsRefused() {
+        // Java hashes a lone surrogate as '?', the wallet as U+FFFD, so the same credential
+        // would have two digests. Refused outright, raw or \\u-escaped, high or low.
+        String wire = genuineWire();
+        for (String memo : new String[] {"a\uD800b", "a\\ud800b", "a\\udc00b", "a\uDC00"}) {
+            String tampered = wire.replaceFirst("\\]\\]\\}\\]$",
+                    "],[\"memo\",\"" + memo.replace("\\", "\\\\") + "\"]]}]");
+            assertFalse(tampered.equals(wire), "fixture must actually add the memo");
+            assertThrows(IllegalArgumentException.class,
+                    () -> IssuanceWarrant.parseCredential(tampered), memo);
+        }
+    }
+
+    @Test
+    @DisplayName("a lone surrogate in the metadata, escaped inside the JSON string, is refused")
+    void loneSurrogateInMetadataIsRefused() {
+        // The metadata is itself JSON, so "\\ud800" there decodes to a lone surrogate only when
+        // the metadata is read. It is still signed text both sides must hash alike.
+        P2PKVoucherSecret credential = signed(locked(STALL, TILL_PUBKEY,
+                metadata(STALL, "issue-and-redeem", TILL_PUBKEY).replace("Front till", "a\uD800b")));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> IssuanceWarrant.parseCredential(credential.toString()));
+    }
+
+    @Test
+    @DisplayName("a correctly paired surrogate in a signed tag still parses")
+    void pairedSurrogateInSignedTagParses() {
+        // The golden credential carries an emoji in its till name; only MALFORMED UTF-16 goes.
+        P2PKVoucherSecret credential = signed(locked(STALL, TILL_PUBKEY,
+                metadata(STALL, "issue-and-redeem", TILL_PUBKEY).replace("Front till", "Pizza \uD83C\uDF55")));
+
+        assertTrue(verifyWire(credential.toString()).isValid());
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static P2PKVoucherSecret expiringCredential(long expiresAt) {
