@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Planned as 0.16.1. Found by the imani-wallet#196 review's parity fuzz against the wallet's
+## [0.16.1] - 2026-10-07
+
+Found by the imani-wallet#196 review's parity fuzz against the wallet's
 TypeScript mirror of `verifyTerminal`. Both sides now take the STRICT reading of each rule.
 
 ### Fixed
