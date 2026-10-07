@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Planned as 0.16.1. Found by the imani-wallet#196 review's parity fuzz against the wallet's
+TypeScript mirror of `verifyTerminal`. Both sides now take the STRICT reading of each rule.
+
+### Fixed
+
+- **`verifyTerminal` read the first value of a row with several.** `["issuer_pubkey", trusted, "x"]`,
+  `["issuer_sig", sig, "x"]`, a signed `["issuer", stall, "x"]` and a two-value `merchant_metadata`
+  row were each read as their first value, and the wallet refused them. Every row read for terminal
+  verification must now carry exactly one value, or the warrant is refused.
+- **`lock_key` in any case.** The terminal metadata's `lock_key` must be lowercase hex, as the gateway
+  writes it, so one credential has one spelling.
+- **Lone surrogates in a signed tag.** `parseCredential` now refuses an unpaired UTF-16 surrogate in
+  the nonce or any tag key or value, explicitly rather than as a side effect of the round trip. Java
+  hashes one as `?` and the wallet as U+FFFD.
+
+### Tests
+
+- Pins that a repeated tag row (`issuer_pubkey`, `issuer_sig`, `issuer`, `merchant_metadata`,
+  `expires_at`, `voucher_id`, `unit`, `memo`), first or last, is refused at parse time, and that
+  `data` must be lowercase hex with a `02` or `03` prefix. cashu-lib already enforced both.
+
 ## [0.16.0] - 2026-10-06
 
 ### BREAKING CHANGES

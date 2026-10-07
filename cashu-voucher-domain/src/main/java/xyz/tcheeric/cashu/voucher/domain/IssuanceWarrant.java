@@ -435,6 +435,24 @@ public final class IssuanceWarrant {
         // array elements and duplicate keys (last wins); refusing anything that does not
         // re-serialise to the exact input closes all of them at once. toString() echoes the
         // remembered wire string, so a setter is touched first to make it serialise afresh.
+        // A lone surrogate anywhere in the signed text is refused outright (0.16.1). Java's
+        // UTF-8 encoder writes it as '?', TypeScript's TextEncoder as U+FFFD, so the two sides
+        // would hash different bytes for the same credential. The round trip below happens to
+        // catch it too, but only as a side effect of the '?' substitution, so say it here.
+        if (hasLoneSurrogate(credential.getNonce())) {
+            throw new IllegalArgumentException("terminal credential nonce has a lone surrogate");
+        }
+        for (WellKnownSecret.Tag tag : credential.getTags()) {
+            if (hasLoneSurrogate(tag.getKey())) {
+                throw new IllegalArgumentException("terminal credential tag has a lone surrogate");
+            }
+            for (Object value : tag.getValues()) {
+                if (value instanceof String text && hasLoneSurrogate(text)) {
+                    throw new IllegalArgumentException(
+                            "terminal credential tag has a lone surrogate");
+                }
+            }
+        }
         credential.setNonce(credential.getNonce());
         if (!credential.toString().equals(wireSecret)) {
             throw new IllegalArgumentException("terminal credential is not in canonical wire form");
@@ -501,7 +519,10 @@ public final class IssuanceWarrant {
             return TerminalVerdict.refused(TerminalRefusal.COUPON_ABOVE_SALE);
         }
 
-        String servicePubkey = credential.getIssuerPublicKey();
+        // Every row read below must carry exactly one value (0.16.1). The getters return the
+        // FIRST value, so ["issuer_pubkey", trusted, rogue] read as the trusted key while the
+        // wallet, which refuses a row with extra values, read no key at all. One row, one value.
+        String servicePubkey = singleValue(credential, VoucherTags.ISSUER_PUBKEY);
         if (servicePubkey == null || !containsIgnoreCase(trustedServiceKeys, servicePubkey)) {
             return TerminalVerdict.refused(TerminalRefusal.UNTRUSTED_SERVICE_KEY);
         }
@@ -509,7 +530,8 @@ public final class IssuanceWarrant {
         // none was signed in the legacy truncated form. Offering the legacy window here would
         // let a holder rewrite expires_at "1000" to "1000.5" and keep a valid signature
         // (review N1).
-        if (!VoucherSignatureService.verifyStrict(credential)) {
+        if (singleValue(credential, VoucherTags.ISSUER_SIG) == null
+                || !VoucherSignatureService.verifyStrict(credential)) {
             return TerminalVerdict.refused(TerminalRefusal.BAD_CREDENTIAL_SIGNATURE);
         }
         // Read the raw tag, not getExpiresAt(): the getter returns null for a value it cannot
@@ -522,7 +544,8 @@ public final class IssuanceWarrant {
             return TerminalVerdict.refused(TerminalRefusal.MALFORMED_CREDENTIAL);
         }
 
-        if (!issuerId.equalsIgnoreCase(credential.getIssuerId())) {
+        String credentialIssuer = singleValue(credential, VoucherTags.ISSUER);
+        if (credentialIssuer == null || !issuerId.equalsIgnoreCase(credentialIssuer)) {
             return TerminalVerdict.refused(TerminalRefusal.WRONG_STALL);
         }
 
@@ -530,7 +553,8 @@ public final class IssuanceWarrant {
             return TerminalVerdict.refused(TerminalRefusal.CREDENTIAL_EXPIRED);
         }
 
-        String lockKey = terminalLockKey(credential.getMerchantMetadata(), issuerId);
+        String lockKey = terminalLockKey(
+                singleValue(credential, VoucherTags.MERCHANT_METADATA), issuerId);
         if (lockKey == null) {
             return TerminalVerdict.refused(TerminalRefusal.NOT_A_SELLING_TERMINAL);
         }
@@ -552,6 +576,38 @@ public final class IssuanceWarrant {
             return TerminalVerdict.refused(TerminalRefusal.BAD_SALE_SIGNATURE);
         }
         return TerminalVerdict.VALID;
+    }
+
+    /**
+     * The tag's value when the row carries exactly one, else {@code null}. Duplicate rows never
+     * get this far: cashu-lib's NUT-11 validation refuses a repeated tag key at parse time.
+     */
+    private static String singleValue(WellKnownSecret secret, String key) {
+        WellKnownSecret.Tag tag = secret.getTag(key);
+        if (tag == null || tag.getValues() == null || tag.getValues().size() != 1) {
+            return null;
+        }
+        Object value = tag.getValues().get(0);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    /** An unpaired UTF-16 surrogate, which has no single UTF-8 encoding both sides agree on. */
+    private static boolean hasLoneSurrogate(String value) {
+        if (value == null) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isHighSurrogate(c)) {
+                if (i + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(i + 1))) {
+                    return true;
+                }
+                i++;
+            } else if (Character.isLowSurrogate(c)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static final Pattern CANONICAL_INTEGER = Pattern.compile("^(0|[1-9][0-9]{0,18})$");
@@ -653,14 +709,12 @@ public final class IssuanceWarrant {
         }
         JsonNode lockKey = metadata.get("lock_key");
         if (lockKey == null || !lockKey.isTextual()
-                || !HEX64.matcher(lockKey.textValue()).matches()) {
+                || !LOWER_HEX64.matcher(lockKey.textValue()).matches()) {
             logger.warn("terminal warrant refused: credential lock_key is malformed");
             return null;
         }
         return lockKey.textValue();
     }
-
-    private static final Pattern HEX64 = Pattern.compile("^[0-9a-fA-F]{64}$");
 
     private static boolean containsIgnoreCase(Collection<String> values, String wanted) {
         for (String value : values) {
