@@ -142,6 +142,36 @@ class OwnerAttestationTest {
     }
 
     @Test
+    @DisplayName("an attestation that is both forged and outlived reports the forgery first")
+    void badSignatureIsReportedBeforeExceeded() {
+        // Spec 4.6.3 checks the signature, then the bound. A forged attestation says nothing
+        // about T, so "exceeded" would be reading a date nobody signed. Java and the wallet
+        // must report the same reason.
+        P2PKVoucherSecret credential = F.credential("issue-and-redeem", F.till,
+                F.attestation().signedBy(F.serviceKey), 4_000_000_001L);
+
+        assertRefusal(TerminalRefusal.BAD_OWNER_ATTESTATION,
+                IssuanceWarrant.verifyOwnerAttestation(credential, F.stall));
+        assertRefusal(TerminalRefusal.BAD_OWNER_ATTESTATION,
+                IssuanceWarrant.verifyTerminal(F.sale(credential).build()));
+    }
+
+    @Test
+    @DisplayName("an uppercase issuerId is refused even when the issuer tag is uppercase too")
+    void uppercaseIssuerIdAndIssuerTagAreRefused() {
+        // Before the service signs, the credential is whatever the caller built. If both the
+        // issuer tag and issuerId were spelled in uppercase, only the exact match against the
+        // lowercase stall_pubkey stops a second spelling of the stall from verifying.
+        String upper = F.stall.toUpperCase(Locale.ROOT);
+        P2PKVoucherSecret credential = F.unsignedCredential("issue-and-redeem", F.till,
+                F.attestation(), 4_000_000_000L);
+        credential.setIssuerId(upper);
+
+        assertRefusal(TerminalRefusal.WRONG_STALL,
+                IssuanceWarrant.verifyOwnerAttestation(credential, upper));
+    }
+
+    @Test
     @DisplayName("a credential with no attestation is refused as missing")
     void absentAttestationIsMissing() {
         // Every credential minted before 0.17.0 looks like this. Refuse and renew, no grace.
@@ -272,6 +302,19 @@ class OwnerAttestationTest {
         // issued for another. The stall is read from both places and they must agree.
         P2PKVoucherSecret credential = F.credential(F.attestation());
         credential.setIssuerId(F.otherStall);
+
+        assertRefusal(TerminalRefusal.WRONG_STALL,
+                IssuanceWarrant.verifyOwnerAttestation(credential, F.stall));
+    }
+
+    @Test
+    @DisplayName("a credential whose metadata names another stall is refused even if the issuer tag is ours")
+    void metadataForAnotherStallIsRefused() {
+        // The other half of the check above: issuer is our stall and our stall signed the
+        // attestation, but the metadata says the till belongs elsewhere. Both must agree.
+        P2PKVoucherSecret credential = F.credentialMetadata(
+                F.metadata("issue-and-redeem", F.till, F.attestation())
+                        .replace("\"stall_pubkey\":\"" + F.stall, "\"stall_pubkey\":\"" + F.otherStall));
 
         assertRefusal(TerminalRefusal.WRONG_STALL,
                 IssuanceWarrant.verifyOwnerAttestation(credential, F.stall));
