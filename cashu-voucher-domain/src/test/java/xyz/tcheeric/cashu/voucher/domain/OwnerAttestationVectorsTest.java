@@ -123,6 +123,11 @@ class OwnerAttestationVectorsTest {
             assertTrue(seen.contains(required.name()), "no vector for " + required);
         }
         assertTrue(seen.contains("null"), "no valid vector");
+        List<String> names = new ArrayList<>();
+        load().get("credential_vectors").forEach(v -> names.add(name(v)));
+        for (String required : List.of("issuer-tag-other", "role-number")) {
+            assertTrue(names.contains(required), "no vector " + required);
+        }
     }
 
     // ------------------------------------------------------------------ generator
@@ -230,6 +235,20 @@ class OwnerAttestationVectorsTest {
                 f.tillSaleSignature(), "skip-offline"));
         creds.add(cred("wrong-stall", f.otherStall, f.credential(good),
                 TerminalRefusal.WRONG_STALL, TerminalRefusal.WRONG_STALL,
+                f.tillSaleSignature(), "skip-offline"));
+        // Only the signed issuer tag names another stall: the metadata, the attestation and
+        // issuerId are all ours (review 5b L1; the wallet mirror once skipped this check).
+        P2PKVoucherSecret issuerTagOther = f.unsignedCredential("issue-and-redeem", f.till, good,
+                AttestationFixtures.T);
+        issuerTagOther.setIssuerId(f.otherStall);
+        creds.add(cred("issuer-tag-other", f.stall, f.signed(issuerTagOther),
+                TerminalRefusal.WRONG_STALL, TerminalRefusal.WRONG_STALL,
+                f.tillSaleSignature(), "skip-offline"));
+        // A numeric role is malformed, not a crash (review 5b L1, mutant R4).
+        creds.add(cred("role-number", f.stall, f.credentialMetadata(
+                        f.metadata("issue-and-redeem", f.till, good)
+                                .replace("\"role\":\"issue-and-redeem\"", "\"role\":1")),
+                TerminalRefusal.MALFORMED_CREDENTIAL, TerminalRefusal.NOT_A_SELLING_TERMINAL,
                 f.tillSaleSignature(), "skip-offline"));
         creds.add(cred("stall-pubkey-uppercase", f.stall, f.credentialMetadata(
                         f.metadata("issue-and-redeem", f.till, good).replace(

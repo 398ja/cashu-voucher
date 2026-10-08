@@ -718,7 +718,9 @@ public final class IssuanceWarrant {
         }
 
         String credentialIssuer = singleValue(credential, VoucherTags.ISSUER);
-        if (credentialIssuer == null || !issuerId.equalsIgnoreCase(credentialIssuer)) {
+        // Exactly issuerId, not ignoring case, the same as verifyOwnerAttestation and
+        // stall_pubkey: one credential, one answer from every verifier (0.17.0, review 5b L2).
+        if (credentialIssuer == null || !issuerId.equals(credentialIssuer)) {
             return TerminalVerdict.refused(TerminalRefusal.WRONG_STALL);
         }
 
