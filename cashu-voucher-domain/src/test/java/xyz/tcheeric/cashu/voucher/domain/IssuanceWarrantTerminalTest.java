@@ -29,11 +29,16 @@ class IssuanceWarrantTerminalTest {
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    /** The stall that owns the till. It signs nothing here; the gateway minted the credential. */
-    private static final String STALL = pubkeyOf(privateKey());
+    /**
+     * The stall that owns the till. Since 0.17.0 it signs the owner attestation inside every
+     * genuine credential; the gateway still mints and signs the credential itself.
+     */
+    private static final byte[] STALL_KEY = privateKey();
+    private static final String STALL = pubkeyOf(STALL_KEY);
 
     /** Some other stall, for the "credential from the wrong shop" case. */
-    private static final String OTHER_STALL = pubkeyOf(privateKey());
+    private static final byte[] OTHER_STALL_KEY = privateKey();
+    private static final String OTHER_STALL = pubkeyOf(OTHER_STALL_KEY);
 
     /** The issuing service, which signs every voucher it mints, credentials included. */
     private static final byte[] SERVICE_KEY = privateKey();
@@ -786,9 +791,25 @@ class IssuanceWarrantTerminalTest {
         return sign(digest(saleTotal), TILL_KEY);
     }
 
+    /**
+     * Terminal metadata as the gateway writes it, with the stall's owner attestation (0.17.0)
+     * for {@code (stall, lockKey, role)} until {@link #FAR_EXPIRY} when we hold that stall's
+     * key. Every credential here expires at or before then, so none outlives its attestation.
+     */
     private static String metadata(String stall, String role, String lockKey) {
+        byte[] stallKey = STALL.equals(stall) ? STALL_KEY
+                : OTHER_STALL.equals(stall) ? OTHER_STALL_KEY : null;
+        String attestation = "";
+        if (stallKey != null) {
+            String nonce = "a1".repeat(32);
+            String expiresAt = Long.toString(FAR_EXPIRY);
+            String sig = sign(IssuanceWarrant.attestationDigest(
+                    "1", stall, lockKey, role, expiresAt, nonce), stallKey);
+            attestation = ",\"owner_attestation\":{\"v\":\"1\",\"expires_at\":\"" + expiresAt
+                    + "\",\"nonce\":\"" + nonce + "\",\"sig\":\"" + sig + "\"}";
+        }
         return "{\"terminal\":true,\"stall_pubkey\":\"" + stall + "\",\"role\":\"" + role
-                + "\",\"lock_key\":\"" + lockKey + "\",\"name\":\"Front till\"}";
+                + "\",\"lock_key\":\"" + lockKey + "\",\"name\":\"Front till\"" + attestation + "}";
     }
 
     /** A credential as the gateway mints it: issuer = stall, locked to the till, signed. */
