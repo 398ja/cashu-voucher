@@ -242,6 +242,159 @@ public final class IssuanceWarrant {
     }
 
     /**
+     * Leads every attestation preimage (imani-wallet#160 spec section 4.6.2).
+     *
+     * <p><b>Domain separation from the sale digest.</b> A {@link #saleDigest} preimage starts
+     * with the stall's 64 lowercase hex characters. This string starts with {@code i}, which is
+     * not hex, so no attestation preimage can equal a sale preimage, and a stall's signature
+     * over one can never verify as the other. The stall signs both with the same key, so this
+     * is what stops a public merchant warrant from being read as consent to a till, and an
+     * attestation from being read as a sale.
+     */
+    public static final String ATTESTATION_DOMAIN = "imani-terminal-attestation";
+
+    /** The only attestation version this build understands. */
+    public static final String ATTESTATION_VERSION = "1";
+
+    /** The metadata key that carries the owner attestation. */
+    public static final String OWNER_ATTESTATION = "owner_attestation";
+
+    /**
+     * The digest the stall signs to let a till's key act as {@code role} until
+     * {@code expiresAt}: {@code sha256(utf8(join(U+001F, "imani-terminal-attestation", v,
+     * stallPubkey, lockKey, role, expiresAt, nonce)))}.
+     *
+     * <p>Every argument is a string exactly as it appears in the credential: verifiers rebuild
+     * the digest from the metadata's own {@code stall_pubkey}, {@code lock_key} and
+     * {@code role}, never from a second copy, so the attestation cannot disagree with the
+     * credential it sits in. {@code name} and {@code idle_lock_minutes} are deliberately not
+     * covered (spec section 4.6.2, owner decision OQ1): they are not authority, and the owner's
+     * wallet checks them byte for byte after the mint.
+     *
+     * <p>Not covered either: the issuing service's key. During a key rotation the owner cannot
+     * know which trusted key will sign.
+     *
+     * @throws IllegalArgumentException if any field carries a control character (the separator
+     *         among them) or malformed UTF-16, which would let two field lists share one preimage
+     */
+    public static byte[] attestationDigest(
+            @NonNull String v,
+            @NonNull String stallPubkey,
+            @NonNull String lockKey,
+            @NonNull String role,
+            @NonNull String expiresAt,
+            @NonNull String nonce
+    ) {
+        for (String field : new String[] {v, stallPubkey, lockKey, role, expiresAt, nonce}) {
+            if (hasControlCharacter(field)) {
+                throw new IllegalArgumentException(
+                        "attestation field carries a control character or malformed UTF-16");
+            }
+        }
+        String preimage = String.join(
+                String.valueOf(FIELD_SEPARATOR),
+                ATTESTATION_DOMAIN, v, stallPubkey, lockKey, role, expiresAt, nonce);
+        return sha256(preimage.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Checks that the stall itself attested a terminal credential, for callers that are not
+     * verifying a sale: gateway-customer before it mints (so no service signature yet) and in
+     * its internal verifier, and the device at unlock.
+     *
+     * <p>Checks the stall's signature and the credential's expiry bound only. It does
+     * <em>not</em> check the service signature, the trusted service keys, the P2PK lock, the
+     * role or liveness: {@link #verifyTerminal} does those for a sale. Any role is accepted,
+     * because gateway-customer validates an attestation on every terminal mint, redeem-only
+     * included.
+     *
+     * <p>Refusals, in order:
+     * <ol>
+     *   <li>{@link TerminalRefusal#MALFORMED_CREDENTIAL}: the metadata row is missing, repeated
+     *       or not one strict JSON object; {@code terminal} is not the boolean {@code true};
+     *       {@code stall_pubkey} or {@code lock_key} is not lowercase HEX64; {@code role} is
+     *       not a string free of control characters; or the credential's {@code expires_at}
+     *       is absent or not a canonical integer.</li>
+     *   <li>{@link TerminalRefusal#WRONG_STALL}: {@code issuerId}, {@code stall_pubkey} and the
+     *       credential's {@code issuer} are not one and the same lowercase key.</li>
+     *   <li>{@link TerminalRefusal#OWNER_ATTESTATION_MISSING},
+     *       {@link TerminalRefusal#BAD_OWNER_ATTESTATION},
+     *       {@link TerminalRefusal#ATTESTATION_EXCEEDED}: as in {@link #verifyTerminal}.</li>
+     * </ol>
+     *
+     * @param credential the terminal credential, signed or not yet signed
+     * @param issuerId   the stall's pubkey, lowercase hex: the key the attestation must verify
+     *                   against
+     */
+    public static TerminalVerdict verifyOwnerAttestation(
+            @NonNull P2PKVoucherSecret credential, @NonNull String issuerId) {
+        JsonNode metadata = readMetadata(singleValue(credential, VoucherTags.MERCHANT_METADATA));
+        Long expiresAt = canonicalEpochSeconds(credential.getTag(VoucherTags.EXPIRES_AT));
+        if (metadata == null || expiresAt == null
+                || !isTrue(metadata.get("terminal"))
+                || !isLowerHex64(metadata.get("stall_pubkey"))
+                || !isLowerHex64(metadata.get("lock_key"))
+                || metadata.get("role") == null || !metadata.get("role").isTextual()
+                || hasControlCharacter(metadata.get("role").textValue())) {
+            return TerminalVerdict.refused(TerminalRefusal.MALFORMED_CREDENTIAL);
+        }
+        if (!issuerId.equals(metadata.get("stall_pubkey").textValue())
+                || !issuerId.equals(singleValue(credential, VoucherTags.ISSUER))) {
+            return TerminalVerdict.refused(TerminalRefusal.WRONG_STALL);
+        }
+        TerminalRefusal refusal = attestationRefusal(metadata, issuerId, expiresAt);
+        return refusal == null ? TerminalVerdict.VALID : TerminalVerdict.refused(refusal);
+    }
+
+    /**
+     * The owner-attestation check shared by {@link #verifyTerminal} and
+     * {@link #verifyOwnerAttestation}, or {@code null} when it passes.
+     *
+     * <p>The caller has already established that {@code metadata} is a terminal whose
+     * {@code stall_pubkey} is {@code issuerId} and whose {@code lock_key} is lowercase HEX64.
+     */
+    private static TerminalRefusal attestationRefusal(
+            JsonNode metadata, String issuerId, long credentialExpiresAt) {
+        JsonNode attestation = metadata.get(OWNER_ATTESTATION);
+        // Exactly {v, expires_at, nonce, sig}, every value a string: one shape, so Java and the
+        // wallet read every attestation alike. Duplicate keys never get here, the strict parse
+        // refuses them.
+        if (attestation == null || !attestation.isObject() || attestation.size() != 4) {
+            return TerminalRefusal.OWNER_ATTESTATION_MISSING;
+        }
+        JsonNode v = attestation.get("v");
+        JsonNode expiresAt = attestation.get("expires_at");
+        JsonNode nonce = attestation.get("nonce");
+        JsonNode sig = attestation.get("sig");
+        if (v == null || !v.isTextual() || !ATTESTATION_VERSION.equals(v.textValue())
+                || expiresAt == null || !expiresAt.isTextual()
+                || nonce == null || !nonce.isTextual()
+                || !LOWER_HEX64.matcher(nonce.textValue()).matches()
+                || sig == null || !sig.isTextual()
+                || !LOWER_HEX128.matcher(sig.textValue()).matches()) {
+            return TerminalRefusal.OWNER_ATTESTATION_MISSING;
+        }
+        Long attestedUntil = canonicalEpochSeconds(expiresAt.textValue());
+        if (attestedUntil == null) {
+            return TerminalRefusal.OWNER_ATTESTATION_MISSING;
+        }
+        // Rebuilt from THIS credential's stall, lock and role: an attestation for another
+        // till, role or stall cannot be carried over.
+        byte[] digest = attestationDigest(v.textValue(), issuerId,
+                metadata.get("lock_key").textValue(), metadata.get("role").textValue(),
+                expiresAt.textValue(), nonce.textValue());
+        if (!signatureValid(issuerId, digest, sig.textValue())) {
+            return TerminalRefusal.BAD_OWNER_ATTESTATION;
+        }
+        // The stall signed "until T". The service may not extend that. T itself is the last
+        // valid second, the same boundary as ExpiryCheck and the mint.
+        if (credentialExpiresAt > attestedUntil) {
+            return TerminalRefusal.ATTESTATION_EXCEEDED;
+        }
+        return null;
+    }
+
+    /**
      * Verifies a {@code merchant} warrant offline, against the stall's own key.
      *
      * <p>Two checks, and the second is the one people forget. The signature must verify, AND
@@ -305,6 +458,19 @@ public final class IssuanceWarrant {
         LOCK_IS_STALL,
         /** The credential's P2PK lock is not its {@code lock_key}. */
         LOCK_MISMATCH,
+        /**
+         * The credential's metadata carries no {@code owner_attestation}, or one that is not
+         * exactly {@code {v, expires_at, nonce, sig}} as strings in their canonical shapes.
+         * The stall never consented to this till, as far as anyone outside the service can tell.
+         */
+        OWNER_ATTESTATION_MISSING,
+        /**
+         * The {@code owner_attestation} signature is not the stall's ({@code issuerId}) over
+         * {@link #attestationDigest} built from this credential's own metadata.
+         */
+        BAD_OWNER_ATTESTATION,
+        /** The credential's {@code expires_at} is later than the attestation's: it outlives what the stall signed. */
+        ATTESTATION_EXCEEDED,
         /** The sale signature is not {@code lock_key}'s over {@link #saleDigest}. */
         BAD_SALE_SIGNATURE
     }
@@ -483,6 +649,13 @@ public final class IssuanceWarrant {
      *       {@code terminal} the boolean {@code true}, {@code stall_pubkey == issuerId}, and
      *       {@code lock_key != issuerId}.</li>
      *   <li><b>The mint lock is {@code lock_key}.</b></li>
+     *   <li><b>The stall attested the till</b> (0.17.0, spec section 4.6): the metadata's
+     *       {@code owner_attestation} is well-formed, its signature by {@code issuerId}
+     *       verifies over {@link #attestationDigest} built from this credential's own
+     *       {@code stall_pubkey}, {@code lock_key} and {@code role}, and the credential's
+     *       {@code expires_at} is no later than the attestation's. Without this, the service
+     *       key alone could mint a selling till for any stall. The service signature (step 3)
+     *       stays required: it makes the credential revocable and pins the lock.</li>
      *   <li><b>{@code signatureHex} is a BIP-340 signature by {@code lock_key} over
      *       {@link #saleDigest}.</b></li>
      * </ol>
@@ -545,7 +718,9 @@ public final class IssuanceWarrant {
         }
 
         String credentialIssuer = singleValue(credential, VoucherTags.ISSUER);
-        if (credentialIssuer == null || !issuerId.equalsIgnoreCase(credentialIssuer)) {
+        // Exactly issuerId, not ignoring case, the same as verifyOwnerAttestation and
+        // stall_pubkey: one credential, one answer from every verifier (0.17.0, review 5b L2).
+        if (credentialIssuer == null || !issuerId.equals(credentialIssuer)) {
             return TerminalVerdict.refused(TerminalRefusal.WRONG_STALL);
         }
 
@@ -553,8 +728,8 @@ public final class IssuanceWarrant {
             return TerminalVerdict.refused(TerminalRefusal.CREDENTIAL_EXPIRED);
         }
 
-        String lockKey = terminalLockKey(
-                singleValue(credential, VoucherTags.MERCHANT_METADATA), issuerId);
+        JsonNode metadata = readMetadata(singleValue(credential, VoucherTags.MERCHANT_METADATA));
+        String lockKey = terminalLockKey(metadata, issuerId);
         if (lockKey == null) {
             return TerminalVerdict.refused(TerminalRefusal.NOT_A_SELLING_TERMINAL);
         }
@@ -566,6 +741,11 @@ public final class IssuanceWarrant {
         if (lock == null || lock.length != 33
                 || !Hex.toHexString(lock, 1, 32).equalsIgnoreCase(lockKey)) {
             return TerminalVerdict.refused(TerminalRefusal.LOCK_MISMATCH);
+        }
+
+        TerminalRefusal attestation = attestationRefusal(metadata, issuerId, expiresAt);
+        if (attestation != null) {
+            return TerminalVerdict.refused(attestation);
         }
 
         if (!signatureValid(
@@ -617,8 +797,15 @@ public final class IssuanceWarrant {
         if (tag == null || tag.getValues() == null || tag.getValues().size() != 1) {
             return null;
         }
-        String raw = String.valueOf(tag.getValues().get(0));
-        if (!CANONICAL_INTEGER.matcher(raw).matches()) {
+        return canonicalEpochSeconds(String.valueOf(tag.getValues().get(0)));
+    }
+
+    /**
+     * {@code 0|[1-9][0-9]{0,18}} that fits a {@code long}, or {@code null}. Nineteen digits can
+     * exceed {@link Long#MAX_VALUE}, and such a value is refused rather than wrapped.
+     */
+    private static Long canonicalEpochSeconds(String raw) {
+        if (raw == null || !CANONICAL_INTEGER.matcher(raw).matches()) {
             return null;
         }
         try {
@@ -635,6 +822,17 @@ public final class IssuanceWarrant {
     private static final int MAX_FACE_DECIMALS = 18;
 
     private static final Pattern LOWER_HEX64 = Pattern.compile("^[0-9a-f]{64}$");
+
+    private static final Pattern LOWER_HEX128 = Pattern.compile("^[0-9a-f]{128}$");
+
+    private static boolean isLowerHex64(JsonNode node) {
+        return node != null && node.isTextual() && LOWER_HEX64.matcher(node.textValue()).matches();
+    }
+
+    /** The boolean {@code true}, not merely truthy. */
+    private static boolean isTrue(JsonNode node) {
+        return node != null && node.isBoolean() && node.booleanValue();
+    }
 
     /**
      * C0 controls (US among them), DEL, C1 controls (U+0080..U+009F), and malformed UTF-16.
@@ -672,33 +870,45 @@ public final class IssuanceWarrant {
             .build();
 
     /**
-     * The {@code lock_key} of a selling terminal's metadata, or {@code null} with a log line
+     * The credential's metadata as one strict JSON object, or {@code null} with a log line
      * saying why it is not one.
      */
-    private static String terminalLockKey(String metadataJson, String issuerId) {
+    private static JsonNode readMetadata(String metadataJson) {
         if (metadataJson == null) {
-            logger.warn("terminal warrant refused: credential carries no metadata");
+            logger.warn("terminal credential carries no metadata");
             return null;
         }
         JsonNode metadata;
         try {
             metadata = JSON.readTree(metadataJson);
         } catch (Exception e) {
-            logger.warn("terminal warrant refused: credential metadata is not JSON");
+            logger.warn("terminal credential metadata is not JSON");
             return null;
         }
         if (metadata == null || !metadata.isObject()) {
-            logger.warn("terminal warrant refused: credential metadata is not an object");
+            logger.warn("terminal credential metadata is not an object");
+            return null;
+        }
+        return metadata;
+    }
+
+    /**
+     * The {@code lock_key} of a selling terminal's metadata, or {@code null} with a log line
+     * saying why it is not one.
+     */
+    private static String terminalLockKey(JsonNode metadata, String issuerId) {
+        if (metadata == null) {
             return null;
         }
         // The boolean true, not truthy: a coupon carrying "terminal": "yes" is not authority.
-        JsonNode terminal = metadata.get("terminal");
-        if (terminal == null || !terminal.isBoolean() || !terminal.booleanValue()) {
+        if (!isTrue(metadata.get("terminal"))) {
             logger.warn("terminal warrant refused: credential metadata is not a terminal");
             return null;
         }
+        // Exactly issuerId (lowercase, checked up front), not ignoring case: the owner
+        // attestation's digest is rebuilt from this stall, so it has one spelling (0.17.0).
         JsonNode stall = metadata.get("stall_pubkey");
-        if (stall == null || !stall.isTextual() || !issuerId.equalsIgnoreCase(stall.textValue())) {
+        if (stall == null || !stall.isTextual() || !issuerId.equals(stall.textValue())) {
             logger.warn("terminal warrant refused: credential names a different stall");
             return null;
         }

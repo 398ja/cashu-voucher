@@ -29,11 +29,16 @@ class IssuanceWarrantTerminalTest {
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    /** The stall that owns the till. It signs nothing here; the gateway minted the credential. */
-    private static final String STALL = pubkeyOf(privateKey());
+    /**
+     * The stall that owns the till. Since 0.17.0 it signs the owner attestation inside every
+     * genuine credential; the gateway still mints and signs the credential itself.
+     */
+    private static final byte[] STALL_KEY = privateKey();
+    private static final String STALL = pubkeyOf(STALL_KEY);
 
     /** Some other stall, for the "credential from the wrong shop" case. */
-    private static final String OTHER_STALL = pubkeyOf(privateKey());
+    private static final byte[] OTHER_STALL_KEY = privateKey();
+    private static final String OTHER_STALL = pubkeyOf(OTHER_STALL_KEY);
 
     /** The issuing service, which signs every voucher it mints, credentials included. */
     private static final byte[] SERVICE_KEY = privateKey();
@@ -41,8 +46,15 @@ class IssuanceWarrantTerminalTest {
     /** The service keys a verifier trusts to mint credentials. */
     private static final Set<String> TRUSTED = Set.of(pubkeyOf(SERVICE_KEY));
 
-    /** The till's own key, K. It never leaves the device. */
-    private static final byte[] TILL_KEY = privateKey();
+    /**
+     * The till's own key, K. It never leaves the device.
+     *
+     * <p>Fixed, not random: the case tests uppercase parts of {@link #TILL_PUBKEY}, which is a
+     * no-op when those hex characters are all digits. A random key hit that about 0.9% of the
+     * time and failed the fixture's own guard (review 5b N1). This key's pubkey,
+     * {@code 531fe606...}, has a letter in its first 10 characters.
+     */
+    private static final byte[] TILL_KEY = Hex.decode("03".repeat(32));
     private static final String TILL_PUBKEY = pubkeyOf(TILL_KEY);
 
     /** Someone who has a copy of the credential but not the till's key. */
@@ -71,6 +83,22 @@ class IssuanceWarrantTerminalTest {
                 credential(OTHER_STALL, "issue-and-redeem", TILL_PUBKEY, true);
 
         assertFalse(verify(STALL, credential, SALE_TOTAL, tillSignature(SALE_TOTAL)));
+    }
+
+    @Test
+    @DisplayName("a credential whose issuer tag is our stall in uppercase is refused")
+    void uppercaseIssuerTagIsRefused() {
+        // Review 5b L2. verifyTerminal compared the issuer tag ignoring case, and
+        // verifyOwnerAttestation exactly, so one credential sold at the portal and read "not
+        // attested" at the gateway. Both now take the one lowercase spelling. Everything else
+        // here is genuine, attestation included, and the service signed the uppercase tag.
+        P2PKVoucherSecret credential = signed(locked(STALL.toUpperCase(Locale.ROOT), TILL_PUBKEY,
+                metadata(STALL, "issue-and-redeem", TILL_PUBKEY)));
+
+        assertRefused(IssuanceWarrant.TerminalRefusal.WRONG_STALL,
+                sale(STALL, credential, SALE_TOTAL, tillSignature(SALE_TOTAL)).build());
+        assertEquals(IssuanceWarrant.TerminalRefusal.WRONG_STALL,
+                IssuanceWarrant.verifyOwnerAttestation(credential, STALL).getRefusal());
     }
 
     @Test
@@ -786,9 +814,25 @@ class IssuanceWarrantTerminalTest {
         return sign(digest(saleTotal), TILL_KEY);
     }
 
+    /**
+     * Terminal metadata as the gateway writes it, with the stall's owner attestation (0.17.0)
+     * for {@code (stall, lockKey, role)} until {@link #FAR_EXPIRY} when we hold that stall's
+     * key. Every credential here expires at or before then, so none outlives its attestation.
+     */
     private static String metadata(String stall, String role, String lockKey) {
+        byte[] stallKey = STALL.equals(stall) ? STALL_KEY
+                : OTHER_STALL.equals(stall) ? OTHER_STALL_KEY : null;
+        String attestation = "";
+        if (stallKey != null) {
+            String nonce = "a1".repeat(32);
+            String expiresAt = Long.toString(FAR_EXPIRY);
+            String sig = sign(IssuanceWarrant.attestationDigest(
+                    "1", stall, lockKey, role, expiresAt, nonce), stallKey);
+            attestation = ",\"owner_attestation\":{\"v\":\"1\",\"expires_at\":\"" + expiresAt
+                    + "\",\"nonce\":\"" + nonce + "\",\"sig\":\"" + sig + "\"}";
+        }
         return "{\"terminal\":true,\"stall_pubkey\":\"" + stall + "\",\"role\":\"" + role
-                + "\",\"lock_key\":\"" + lockKey + "\",\"name\":\"Front till\"}";
+                + "\",\"lock_key\":\"" + lockKey + "\",\"name\":\"Front till\"" + attestation + "}";
     }
 
     /** A credential as the gateway mints it: issuer = stall, locked to the till, signed. */
