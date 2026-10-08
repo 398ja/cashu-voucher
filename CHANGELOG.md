@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The stall owner attests each terminal credential (imani-wallet#160 decision 5, step 5b-1; design in
+imani-wallet `docs/spec-terminals-in-service.md` section 4.6). Until now a `terminal` warrant rested on
+the issuing service's signature alone, so whoever held the service key could mint a selling till for
+any stall. The stall's own key now has to sign too.
+
+### BREAKING CHANGES
+
+- **`verifyTerminal` refuses a credential the stall did not attest.** A terminal credential's signed
+  `merchant_metadata` must carry `owner_attestation`: exactly `{"v", "expires_at", "nonce", "sig"}`,
+  all strings, with `v` = `"1"`, `expires_at` a canonical epoch-seconds integer, `nonce` 64 lowercase
+  hex and `sig` 128 lowercase hex. `sig` must be the stall's (`issuerId`) BIP-340 signature over
+  `attestationDigest`, built from the credential's own `stall_pubkey`, `lock_key` and `role`. The
+  credential's `expires_at` may not be later than the attestation's. Checked after `LOCK_MISMATCH` and
+  before the sale signature. The service signature and trusted service keys stay required.
+- **No grace period.** Every credential minted before this release has no attestation and is refused
+  with `OWNER_ATTESTATION_MISSING`. Terminals must be renewed (spec section 4.6.5).
+- **`TerminalRefusal` gains `OWNER_ATTESTATION_MISSING`, `BAD_OWNER_ATTESTATION` and
+  `ATTESTATION_EXCEEDED`**, which breaks any exhaustive `switch` on it. That is deliberate: the portal's
+  `terminalTag` must name them.
+- **`stall_pubkey` must equal `issuerId` exactly.** It was compared ignoring case. `issuerId` was
+  already required to be lowercase, and the attestation digest is rebuilt from `stall_pubkey`, so it
+  now has one spelling.
+
+### Added
+
+- `IssuanceWarrant.attestationDigest(v, stallPubkey, lockKey, role, expiresAt, nonce)`:
+  `sha256(utf8(join(U+001F, "imani-terminal-attestation", v, S, K, role, expires_at, nonce)))`. The
+  domain string comes first, so it can never equal a `saleDigest` preimage (which starts with 64 hex
+  characters): a stall's merchant-warrant signature is never an attestation, and the reverse. `name` and
+  `idle_lock_minutes` are not covered (owner decision OQ1). Fields with control characters are refused.
+- `IssuanceWarrant.verifyOwnerAttestation(credential, issuerId)`, for gateway-customer (before it mints,
+  and in its verifier) and the device. Checks the attestation and the expiry bound only, for any role.
+  Refusals: `MALFORMED_CREDENTIAL`, `WRONG_STALL`, then the three above.
+- Constants `ATTESTATION_DOMAIN`, `ATTESTATION_VERSION` and `OWNER_ATTESTATION`.
+
+### Tests
+
+- `owner-attestation-vectors.json` (in `cashu-voucher-domain/src/test/resources`): golden digest
+  vectors and 30 credential vectors, each with the expected verdict from both verifiers, for the
+  wallet's TypeScript mirror. `OwnerAttestationVectorsTest` replays every vector against this build.
+- Domain separation from the merchant warrant is pinned both ways.
+
 ## [0.16.1] - 2026-10-07
 
 Found by the imani-wallet#196 review's parity fuzz against the wallet's
