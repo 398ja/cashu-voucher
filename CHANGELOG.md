@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-08
+
 The stall owner attests each terminal credential (imani-wallet#160 decision 5, step 5b-1; design in
 imani-wallet `docs/spec-terminals-in-service.md` section 4.6). Until now a `terminal` warrant rested on
 the issuing service's signature alone, so whoever held the service key could mint a selling till for
@@ -31,6 +33,9 @@ any stall. The stall's own key now has to sign too.
 - **`stall_pubkey` must equal `issuerId` exactly.** It was compared ignoring case. `issuerId` was
   already required to be lowercase, and the attestation digest is rebuilt from `stall_pubkey`, so it
   now has one spelling.
+- **`verifyTerminal` compares the credential's `issuer` tag with `issuerId` exactly.** It was compared
+  ignoring case, while `verifyOwnerAttestation` compared it exactly, so one credential with an
+  uppercase `issuer` tag got two answers. Both now refuse it with `WRONG_STALL`.
 
 ### Added
 
@@ -47,8 +52,13 @@ any stall. The stall's own key now has to sign too.
 ### Tests
 
 - `owner-attestation-vectors.json` (in `cashu-voucher-domain/src/test/resources`): golden digest
-  vectors and 30 credential vectors, each with the expected verdict from both verifiers, for the
+  vectors and 32 credential vectors, each with the expected verdict from both verifiers, for the
   wallet's TypeScript mirror. `OwnerAttestationVectorsTest` replays every vector against this build.
+  They include `issuer-tag-other` (only the signed `issuer` tag names another stall) and
+  `role-number` (a numeric `role` is malformed). The file's sha256 is
+  `996606cf368a224d9152735530b1d5529d8dda2c91031ee6fbcc2f3c7c106615`; the wallet's copy must match it.
+- `IssuanceWarrantTerminalTest` uses a fixed till key. A random one made
+  `dataMustBeLowercaseCompressedKey` fail about 0.9% of runs.
 - Domain separation from the merchant warrant is pinned both ways.
 
 ## [0.16.1] - 2026-10-07
