@@ -121,6 +121,6 @@ jobs:
         # the workflow asks for, so the step can only fail. The push and schedule runs cover the
         # same code.
         if: always() && github.event_name != 'pull_request'
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
