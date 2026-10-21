@@ -14,6 +14,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `IssuanceWarrant.Form.DELEGATED` now describes the shipped model (imani-wallet#176): a
   stall-signed kind-30078 delegation inside the warrant plus the delegate's signature over the
   sale digest and `ref`, rather than the earlier credential-minted two-step idea.
+## [0.17.0] - 2026-10-08
+
+The stall owner attests each terminal credential (imani-wallet#160 decision 5, step 5b-1; design in
+imani-wallet `docs/spec-terminals-in-service.md` section 4.6). Until now a `terminal` warrant rested on
+the issuing service's signature alone, so whoever held the service key could mint a selling till for
+any stall. The stall's own key now has to sign too.
+
+### BREAKING CHANGES
+
+- **`verifyTerminal` refuses a credential the stall did not attest.** A terminal credential's signed
+  `merchant_metadata` must carry `owner_attestation`: exactly `{"v", "expires_at", "nonce", "sig"}`,
+  all strings, with `v` = `"1"`, `expires_at` a canonical epoch-seconds integer, `nonce` 64 lowercase
+  hex and `sig` 128 lowercase hex. `sig` must be the stall's (`issuerId`) BIP-340 signature over
+  `attestationDigest`, built from the credential's own `stall_pubkey`, `lock_key` and `role`. The
+  credential's `expires_at` may not be later than the attestation's. Checked after `LOCK_MISMATCH` and
+  before the sale signature. The service signature and trusted service keys stay required.
+- **No grace period.** Every credential minted before this release has no attestation and is refused
+  with `OWNER_ATTESTATION_MISSING`. Terminals must be renewed (spec section 4.6.5).
+- **`TerminalRefusal` gains `OWNER_ATTESTATION_MISSING`, `BAD_OWNER_ATTESTATION` and
+  `ATTESTATION_EXCEEDED`**, which breaks any exhaustive `switch` on it. That is deliberate: the portal's
+  `terminalTag` must name them.
+- **`stall_pubkey` must equal `issuerId` exactly.** It was compared ignoring case. `issuerId` was
+  already required to be lowercase, and the attestation digest is rebuilt from `stall_pubkey`, so it
+  now has one spelling.
+- **`verifyTerminal` compares the credential's `issuer` tag with `issuerId` exactly.** It was compared
+  ignoring case, while `verifyOwnerAttestation` compared it exactly, so one credential with an
+  uppercase `issuer` tag got two answers. Both now refuse it with `WRONG_STALL`.
+
+### Added
+
+- `IssuanceWarrant.attestationDigest(v, stallPubkey, lockKey, role, expiresAt, nonce)`:
+  `sha256(utf8(join(U+001F, "imani-terminal-attestation", v, S, K, role, expires_at, nonce)))`. The
+  domain string comes first, so it can never equal a `saleDigest` preimage (which starts with 64 hex
+  characters): a stall's merchant-warrant signature is never an attestation, and the reverse. `name` and
+  `idle_lock_minutes` are not covered (owner decision OQ1). Fields with control characters are refused.
+- `IssuanceWarrant.verifyOwnerAttestation(credential, issuerId)`, for gateway-customer (before it mints,
+  and in its verifier) and the device. Checks the attestation and the expiry bound only, for any role.
+  Refusals: `MALFORMED_CREDENTIAL`, `WRONG_STALL`, then the three above.
+- Constants `ATTESTATION_DOMAIN`, `ATTESTATION_VERSION` and `OWNER_ATTESTATION`.
+
+### Tests
+
+- `owner-attestation-vectors.json` (in `cashu-voucher-domain/src/test/resources`): golden digest
+  vectors and 32 credential vectors, each with the expected verdict from both verifiers, for the
+  wallet's TypeScript mirror. `OwnerAttestationVectorsTest` replays every vector against this build.
+  They include `issuer-tag-other` (only the signed `issuer` tag names another stall) and
+  `role-number` (a numeric `role` is malformed). The file's sha256 is
+  `996606cf368a224d9152735530b1d5529d8dda2c91031ee6fbcc2f3c7c106615`; the wallet's copy must match it.
+- `IssuanceWarrantTerminalTest` uses a fixed till key. A random one made
+  `dataMustBeLowercaseCompressedKey` fail about 0.9% of runs.
+- Domain separation from the merchant warrant is pinned both ways.
+
+## [0.16.1] - 2026-10-07
+
+Found by the imani-wallet#196 review's parity fuzz against the wallet's
+TypeScript mirror of `verifyTerminal`. Both sides now take the STRICT reading of each rule.
+
+### Fixed
+
+- **`verifyTerminal` read the first value of a row with several.** `["issuer_pubkey", trusted, "x"]`,
+  `["issuer_sig", sig, "x"]`, a signed `["issuer", stall, "x"]` and a two-value `merchant_metadata`
+  row were each read as their first value, and the wallet refused them. Every row read for terminal
+  verification must now carry exactly one value, or the warrant is refused.
+- **`lock_key` in any case.** The terminal metadata's `lock_key` must be lowercase hex, as the gateway
+  writes it, so one credential has one spelling.
+- **Lone surrogates in a signed tag.** `parseCredential` now refuses an unpaired UTF-16 surrogate in
+  the nonce or any tag key or value, explicitly rather than as a side effect of the round trip. Java
+  hashes one as `?` and the wallet as U+FFFD.
+
+### Tests
+
+- Pins that a repeated tag row (`issuer_pubkey`, `issuer_sig`, `issuer`, `merchant_metadata`,
+  `expires_at`, `voucher_id`, `unit`, `memo`), first or last, is refused at parse time, and that
+  `data` must be lowercase hex with a `02` or `03` prefix. cashu-lib already enforced both.
+
+## [0.16.0] - 2026-10-06
+
+### BREAKING CHANGES
+
+- **New terminal warrant API requires an explicit expiry choice.** `IssuanceWarrant.verifyTerminal(TerminalSale)`
+  is the new verification entry point for the `terminal` form, and `TerminalSale` cannot be built without an
+  `ExpiryCheck` (`ExpiryCheck.at(nowEpochSeconds)` or `ExpiryCheck.skipOffline()`). Callers must choose one.
 
 ### Fixed
 
@@ -28,6 +110,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   module's public API, or a `NoClassDefFoundError` on nostr's Schnorr the first time it verified
   a voucher signature. Every release from 0.12.0 to 0.15.0 shipped that way.
 
+
+### Added
+
+- **A `terminal` issuance warrant (imani-wallet#160, spec §5.5).** `IssuanceWarrant.Form.TERMINAL`
+  (wire `terminal`) and `IssuanceWarrant.verifyTerminal(TerminalSale)`, which returns a `TerminalVerdict` carrying a
+  `TerminalRefusal` reason, plus `IssuanceWarrant.parseCredential(wireSecret)`. A till's key `K` signs the existing sale digest, and the warrant carries
+  the terminal credential the gateway minted to `K`. Verification is offline: the credential's
+  issuer signature verifies under a trusted service key, its `issuer_id` is the stall, its
+  metadata is a terminal with role `issue-and-redeem`, it is P2PK-locked to its `lock_key`, and
+  the sale signature verifies against `lock_key`. Liveness (revocation) is not checked here.
+  The portal checks it at issuance.
+  Expiry is a required builder choice: `ExpiryCheck.at(nowEpochSeconds)` at issuance or
+  `ExpiryCheck.skipOffline()` for an issued coupon. A credential without a canonical integer
+  `expires_at` is refused, the credential signature is verified with no legacy-canonical window,
+  and `expires_at` is the last valid second, as at the mint. Inputs are validated: lowercase-hex `issuerId`, no
+  control characters in `unit` or `saleNonce`, sale total at most 2^53-1, decimals 0..18, and a
+  `lock_key` equal to the stall is refused. The caller still checks the coupon's denomination.
+
+  `parseCredential` accepts only the exact bytes cashu-lib's serialiser would write, so its
+  canonical form is tied to that serialiser. Whoever mints credentials (gc) and whoever parses
+  them (the portal) must run the same cashu-lib serialiser. A frozen golden wire string in the
+  tests means a cashu-lib change to that output fails this library's CI rather than refusing
+  every outstanding credential in production.
+
+  `Form.DELEGATED` is unchanged. It stays the card-purchase form (#52), because its nonce is
+  spent once, while one terminal Sell may be split into several parts under one warrant.
 
 ## [0.15.0] - 2026-09-28
 
