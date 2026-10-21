@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- `IssuanceWarrant.Form.DELEGATED` now describes the shipped model (imani-wallet#176): a
+  stall-signed kind-30078 delegation inside the warrant plus the delegate's signature over the
+  sale digest and `ref`, rather than the earlier credential-minted two-step idea.
 ## [0.17.0] - 2026-10-08
 
 The stall owner attests each terminal credential (imani-wallet#160 decision 5, step 5b-1; design in
