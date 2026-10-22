@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> **Release gate (owner decision D10, cashu-mint#540):** do not release until the mint's redemption
-> cap is in ENFORCE mode. Making whole-ratio vouchers verify again re-opens the #540 relabel attack
-> for them while the cap only logs. Requires cashu-lib with cashu-lib#272 (whole ratios written as
-> `"2"`); against cashu-lib 0.30.6 every whole-ratio issuance would throw at sign time.
+## [0.17.1] - 2026-10-22
+
+> **Release gate (owner decision D10, cashu-mint#540):** released after owner approval with the
+> mint redemption cap in ENFORCE on staging. Prod stays on the old BOM until its cap enforces.
+> Built on **cashu-lib 0.30.7** (cashu-lib#272, whole ratios written as `"2"`); never pair this
+> release with cashu-lib 0.30.6, where every whole-ratio issuance would throw at sign time.
 
 ### Fixed
 
