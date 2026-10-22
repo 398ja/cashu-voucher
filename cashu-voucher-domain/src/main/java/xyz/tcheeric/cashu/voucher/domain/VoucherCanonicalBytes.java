@@ -135,30 +135,112 @@ public final class VoucherCanonicalBytes {
      * @return true when no numeric tag needed normalising
      */
     public static boolean hasCanonicalNumericTags(@NonNull WellKnownSecret secret) {
+        return firstNonCanonicalNumericTag(secret) == null;
+    }
+
+    /**
+     * The key of the first numeric tag whose wire spelling is not canonical, or {@code null}.
+     *
+     * <p>The same rule as {@link #hasCanonicalNumericTags}, answering which tag broke it, so a
+     * signer can refuse with a message that names it.
+     *
+     * @param secret the voucher secret whose tags to inspect
+     * @return the offending tag key, or null when every numeric tag is canonical
+     */
+    public static String firstNonCanonicalNumericTag(@NonNull WellKnownSecret secret) {
+        return firstNumericTagFailing(secret, false);
+    }
+
+    /**
+     * Whether every numeric tag is canonical, or is {@code issuance_ratio} in the one legacy
+     * spelling a genuine issuer produced. This is what verification accepts.
+     *
+     * <h2>Why one exception, and only this one</h2>
+     *
+     * <p>cashu-lib up to 0.30.6 stored a whole-number ratio as {@code String.valueOf(50.0)},
+     * i.e. {@code "50.0"}, and issuers signed it: {@link #of} renders it as {@code 50}, so the
+     * signature commits to 50. Those proofs are live and cannot be rewritten, because the
+     * secret string is what the mint hashes to {@code Y} (cashu-voucher#59).
+     *
+     * <p>Accepting that spelling does not reopen #48, because #48 is about a wire string with
+     * two readings, and this one has one:
+     *
+     * <ul>
+     *   <li>Accepted only when the wire is EXACTLY {@code Double.toString} of the canonical
+     *       whole number: {@code "50.0"}, {@code "1.0E7"}. Not {@code "50.00"}, {@code "5e1"},
+     *       {@code "50d"} or {@code "0x32"}, which Java's {@code Double.valueOf} and the
+     *       wallet's {@code Number()} do not agree on, and which no issuer ever wrote.</li>
+     *   <li>Every reader of {@code issuance_ratio} parses it as a double
+     *       ({@code VoucherSecret.getIssuanceRatio}, the mint's {@code VoucherTerms}, the
+     *       gateway's {@code SuccessorSatBound}, the wallet's {@code Number()}), and all of
+     *       them read {@code "50.0"} and {@code "50"} as 50. None uses {@code Long.parseLong},
+     *       which is what made {@code "500.0"} ambiguous for {@code face_value}.</li>
+     *   <li>The signed bytes are the same 50 either way, so the signature commits to that one
+     *       value, whichever spelling is on the wire.</li>
+     * </ul>
+     *
+     * <p>{@code face_value}, {@code expires_at} and {@code face_decimals} keep the strict rule:
+     * they are read with {@code Long.parseLong}, so their decimal spellings are exactly the
+     * two-readings case #48 closed.
+     *
+     * @param secret the voucher secret whose tags to inspect
+     * @return true when verification may proceed to the signature check
+     */
+    public static boolean hasVerifiableNumericTags(@NonNull WellKnownSecret secret) {
+        return firstNumericTagFailing(secret, true) == null;
+    }
+
+    private static String firstNumericTagFailing(WellKnownSecret secret, boolean allowLegacyRatioSpelling) {
         List<WellKnownSecret.Tag> tags = secret.getTags();
         if (tags == null) {
-            return true;
+            return null;
         }
         for (WellKnownSecret.Tag tag : tags) {
             if (!isNumericTag(tag.getKey())) {
                 continue;
             }
+            boolean legacyAllowed = allowLegacyRatioSpelling && VoucherTags.ISSUANCE_RATIO.equals(tag.getKey());
             for (Object value : tag.getValues()) {
-                String wire = String.valueOf(value);
-                StringBuilder canonical = new StringBuilder();
-                try {
-                    appendNumber(canonical, parseNumber(wire), NumericTagForm.CURRENT);
-                } catch (NumberFormatException notANumber) {
-                    // A numeric tag that is not a number has no canonical form, so it cannot
-                    // be in one. Refusing beats hashing it as text and accepting it.
-                    return false;
-                }
-                if (!canonical.toString().equals(wire)) {
-                    return false;
+                if (!isAcceptedSpelling(String.valueOf(value), legacyAllowed)) {
+                    return tag.getKey();
                 }
             }
         }
-        return true;
+        return null;
+    }
+
+    private static boolean isAcceptedSpelling(String wire, boolean legacyRatioAllowed) {
+        String canonical;
+        try {
+            canonical = canonicalSpelling(wire);
+        } catch (NumberFormatException notANumber) {
+            // A numeric tag that is not a number has no canonical form, so it cannot be in
+            // one. Refusing beats hashing it as text and accepting it.
+            return false;
+        }
+        if (canonical.equals(wire)) {
+            return true;
+        }
+        return legacyRatioAllowed && wire.equals(legacyWholeRatioSpelling(canonical));
+    }
+
+    private static String canonicalSpelling(String wire) {
+        StringBuilder canonical = new StringBuilder();
+        appendNumber(canonical, parseNumber(wire), NumericTagForm.CURRENT);
+        return canonical.toString();
+    }
+
+    /**
+     * What cashu-lib up to 0.30.6 wrote for a whole-number ratio: {@code String.valueOf} of the
+     * double, so {@code "50.0"} for 50 and {@code "1.0E7"} for ten million. Null when the
+     * canonical form is not a whole number, which has no legacy spelling.
+     */
+    private static String legacyWholeRatioSpelling(String canonical) {
+        try {
+            return Double.toString((double) Long.parseLong(canonical));
+        } catch (NumberFormatException fractional) {
+            return null;
+        }
     }
 
     /**

@@ -9,11 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> **Release gate (owner decision D10, cashu-mint#540):** do not release until the mint's redemption
+> cap is in ENFORCE mode. Making whole-ratio vouchers verify again re-opens the #540 relabel attack
+> for them while the cap only logs. Requires cashu-lib with cashu-lib#272 (whole ratios written as
+> `"2"`); against cashu-lib 0.30.6 every whole-ratio issuance would throw at sign time.
+
+### Fixed
+
+- **A whole-number `issuance_ratio` other than 1 verifies again (#59).** cashu-lib up to 0.30.6
+  stored a ratio of 50 as `"50.0"`. `sign()` hashed the canonical `50`, and `verify()` (since 0.15.0,
+  #48) refused the wire because it was not canonical, so every MINIMAL, FIXED and
+  merchant-denomination voucher with a whole ratio failed with `voucher_signature_invalid`.
+  `verify()` now accepts exactly that legacy spelling (`Double.toString` of the whole number:
+  `"50.0"`, `"1.0E7"`) **for `issuance_ratio` only**, because those proofs are live and their secret
+  cannot be rewritten. Every reader parses the ratio as a double, so `"50"` and `"50.0"` have one
+  meaning, and the signed bytes are identical. Any other spelling (`"50.00"`, `"5e1"`, `"50d"`, ...)
+  is still refused, and `face_value`, `expires_at` and `face_decimals` keep the strict #48 rule.
+  `verifyStrict` gets no legacy window.
+
+### Changed
+
+- **`sign()` and `createSigned()` refuse a secret whose numeric tags are not canonical**, with an
+  `IllegalArgumentException` naming the tag. An issuer can no longer produce a voucher its own
+  verifier rejects. Adds `VoucherCanonicalBytes.firstNonCanonicalNumericTag` and
+  `hasVerifiableNumericTags`; `hasCanonicalNumericTags` keeps its strict meaning.
+- Golden vectors for ratios 2, 50 and 700 (`whole-issuance-ratio-vectors.json`), replayed by
+  `VoucherGoldenVectorTest` and by the imani-wallet TypeScript verifier.
+
 ### Documentation
 
 - `IssuanceWarrant.Form.DELEGATED` now describes the shipped model (imani-wallet#176): a
   stall-signed kind-30078 delegation inside the warrant plus the delegate's signature over the
   sale digest and `ref`, rather than the earlier credential-minted two-step idea.
+
 ## [0.17.0] - 2026-10-08
 
 The stall owner attests each terminal credential (imani-wallet#160 decision 5, step 5b-1; design in

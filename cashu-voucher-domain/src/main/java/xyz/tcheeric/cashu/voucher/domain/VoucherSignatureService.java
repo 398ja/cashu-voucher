@@ -112,7 +112,8 @@ public final class VoucherSignatureService {
      * @param secret the voucher secret to sign (must not be null)
      * @param issuerPrivateKeyHex the issuer's private key as hex string (64 chars, must not be null)
      * @return the Schnorr signature (64 bytes)
-     * @throws IllegalArgumentException if the private key format is invalid
+     * @throws IllegalArgumentException if the private key format is invalid, or if a numeric tag
+     *                                  is not written in its canonical form (cashu-voucher#59)
      */
     public static byte[] sign(
             @NonNull WellKnownSecret secret,
@@ -126,6 +127,8 @@ public final class VoucherSignatureService {
                         "Invalid private key length: expected " + SECP256K1_PRIVATE_KEY_LENGTH +
                                 " bytes, got " + privateKeyBytes.length);
             }
+
+            requireCanonicalNumericTags(secret);
 
             // Get canonical bytes for signing (NUT-10 format without signature)
             byte[] canonicalBytes = getCanonicalBytesForSigning(secret);
@@ -194,7 +197,7 @@ public final class VoucherSignatureService {
             @NonNull byte[] signature,
             @NonNull String issuerPublicKeyHex
     ) {
-        return verify(secret, signature, issuerPublicKeyHex, LEGACY_CANONICAL_ENABLED);
+        return verify(secret, signature, issuerPublicKeyHex, LEGACY_CANONICAL_ENABLED, true);
     }
 
     /**
@@ -216,7 +219,7 @@ public final class VoucherSignatureService {
             return false;
         }
         try {
-            return verify(secret, Hex.decode(signatureHex), publicKeyHex, false);
+            return verify(secret, Hex.decode(signatureHex), publicKeyHex, false, false);
         } catch (Exception e) {
             logger.warn("Signature verification failed for voucher {}: {}",
                     VoucherMetadata.voucherId(secret), e.getMessage());
@@ -256,7 +259,8 @@ public final class VoucherSignatureService {
             WellKnownSecret secret,
             byte[] signature,
             String issuerPublicKeyHex,
-            boolean allowLegacy
+            boolean allowLegacy,
+            boolean allowLegacyRatioSpelling
     ) {
         try {
             if (signature.length != SCHNORR_SIGNATURE_LENGTH) {
@@ -280,7 +284,18 @@ public final class VoucherSignatureService {
             // reading that suits them. So the wire form must ALREADY be canonical, not merely
             // normalise to something that is. See VoucherCanonicalBytes#hasCanonicalNumericTags
             // and cashu-voucher#48.
-            if (!VoucherCanonicalBytes.hasCanonicalNumericTags(secret)) {
+            //
+            // The one exception is issuance_ratio in the exact "50.0" spelling cashu-lib up to
+            // 0.30.6 wrote for a whole number: live vouchers carry it and every reader of the
+            // ratio reads it as 50, so it has one meaning (cashu-voucher#59). See
+            // VoucherCanonicalBytes#hasVerifiableNumericTags. It is a different window from
+            // allowLegacy (truncated bytes, which IS malleable): this one does not change the
+            // hashed bytes, so it is not tied to that operator switch. verifyStrict, for
+            // secrets that were only ever minted canonically, gets neither.
+            boolean numericTagsAcceptable = allowLegacyRatioSpelling
+                    ? VoucherCanonicalBytes.hasVerifiableNumericTags(secret)
+                    : VoucherCanonicalBytes.hasCanonicalNumericTags(secret);
+            if (!numericTagsAcceptable) {
                 logger.warn("voucher_numeric_tag_not_canonical voucherId={} - refusing a signature "
                                 + "over a number with more than one reading",
                         VoucherMetadata.voucherId(secret));
@@ -360,6 +375,28 @@ public final class VoucherSignatureService {
         secret.setIssuerSignature(Hex.toHexString(signature));
         secret.setIssuerPublicKey(issuerPublicKeyHex);
         return new SignedVoucher(secret);
+    }
+
+    /**
+     * Refuses to sign a secret whose numeric tags are not already canonical.
+     *
+     * <p>{@link #verify} refuses such a voucher (cashu-voucher#48), and the canonicaliser
+     * normalises before hashing, so signing one used to succeed and produce a voucher its own
+     * issuer's verifier rejects. That is how every whole-number issuance ratio shipped dead for
+     * three releases (cashu-voucher#59). Failing here puts the mistake at issuance, where it is
+     * cheap, rather than at redemption.
+     *
+     * <p>Strict, with no legacy window: the legacy ratio spelling is accepted on verify only
+     * because live vouchers carry it. Nothing should sign it again.
+     */
+    private static void requireCanonicalNumericTags(WellKnownSecret secret) {
+        String offending = VoucherCanonicalBytes.firstNonCanonicalNumericTag(secret);
+        if (offending != null) {
+            throw new IllegalArgumentException("Refusing to sign voucher " + VoucherMetadata.voucherId(secret)
+                    + ": numeric tag '" + offending + "' is not in canonical form, so the voucher "
+                    + "would not verify. Write whole numbers without a decimal point (\"50\", not "
+                    + "\"50.0\").");
+        }
     }
 
     private static byte[] getCanonicalBytesForSigning(WellKnownSecret secret) {
