@@ -78,6 +78,28 @@
             <!-- Cashu and platform versions come from the BOM, never pinned here. A local pin
                  drifts silently: cashu-lib was pinned at four different versions across the
                  repos that use it before this import existed. -->
+            <!-- TEMPORARY override of the BOM's cashu-lib (cashu-voucher#59). 0.17.1 must be
+                 built on cashu-lib 0.30.7: against 0.30.6 every whole-ratio issuance throws at
+                 sign() time. No published imani-bom carries 0.30.7 yet, and the BOM release
+                 that will carry it also pins this release, so it cannot come first. A
+                 project's own dependencyManagement wins over an imported BOM. Remove these
+                 three entries when imani-bom.version moves to a BOM with cashu-lib >= 0.30.7. -->
+            <dependency>
+                <groupId>xyz.tcheeric</groupId>
+                <artifactId>cashu-lib-common</artifactId>
+                <version>0.30.7</version>
+            </dependency>
+            <dependency>
+                <groupId>xyz.tcheeric</groupId>
+                <artifactId>cashu-lib-entities</artifactId>
+                <version>0.30.7</version>
+            </dependency>
+            <dependency>
+                <groupId>xyz.tcheeric</groupId>
+                <artifactId>cashu-lib-crypto</artifactId>
+                <version>0.30.7</version>
+            </dependency>
+
             <dependency>
                 <groupId>xyz.tcheeric</groupId>
                 <artifactId>imani-bom</artifactId>
