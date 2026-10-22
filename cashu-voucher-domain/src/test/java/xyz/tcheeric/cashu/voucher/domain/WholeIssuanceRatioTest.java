@@ -330,7 +330,10 @@ class WholeIssuanceRatioTest {
         // the two cannot disagree about which string an old issuer wrote.
         @ParameterizedTest
         @CsvSource({"1.0E7, true", "1.2E7, true", "9999999.0, true",
-                "10000000.0, false", "1.0e7, false", "1E7, false"})
+                "10000000.0, false", "1.0e7, false", "1E7, false",
+                // long saturates at 2^63, so nothing larger has a legacy spelling
+                "9.223372036854776E18, true", "1.0E19, false", "1.8446744073709552E19, false",
+                "-1.0E19, false"})
         @DisplayName("the legacy spelling follows Double.toString across the 1e7 boundary")
         void legacySpellingBoundaryMatchesTypeScript(String wire, boolean accepted) {
             // Arrange
