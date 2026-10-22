@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
 import xyz.tcheeric.cashu.common.nut11.P2PKVoucherSecret;
@@ -322,6 +323,22 @@ class WholeIssuanceRatioTest {
             // Act + Assert
             assertThat(VoucherCanonicalBytes.hasCanonicalNumericTags(secret)).isFalse();
             assertThat(VoucherCanonicalBytes.hasVerifiableNumericTags(secret)).isTrue();
+        }
+
+        // Double.toString switches to E notation at 1e7, so the legacy spelling of ten million is
+        // "1.0E7". The TypeScript verifier asserts the same table (wholeIssuanceRatio.test.ts), so
+        // the two cannot disagree about which string an old issuer wrote.
+        @ParameterizedTest
+        @CsvSource({"1.0E7, true", "1.2E7, true", "9999999.0, true",
+                "10000000.0, false", "1.0e7, false", "1E7, false"})
+        @DisplayName("the legacy spelling follows Double.toString across the 1e7 boundary")
+        void legacySpellingBoundaryMatchesTypeScript(String wire, boolean accepted) {
+            // Arrange
+            P2PKVoucherSecret secret = locked();
+            setRatioSpelling(secret, wire);
+
+            // Act + Assert
+            assertThat(VoucherCanonicalBytes.hasVerifiableNumericTags(secret)).as(wire).isEqualTo(accepted);
         }
     }
 }
