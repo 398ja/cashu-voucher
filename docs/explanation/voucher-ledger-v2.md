@@ -164,6 +164,17 @@ Anyone who knows `ref` can publish many events at the same `d` under throwaway o
 Each is refused by the inner signature, but each costs the reader a fetch, so readers must not
 rely on a small relay `limit` (a flood could push the genuine events out of the result).
 
+A reader that cannot get a complete answer (no relay connection, an error, a `CLOSED`, or no
+`EOSE` before its timeout) must fail closed: report an error, never "no ledger entry". An
+empty result means every queried relay reached `EOSE` with nothing accepted. Otherwise a
+REDEEMED or REVOKED voucher would read as unknown.
+
+A local cache of ledger events is only safe as read-through-and-merge (always ask the relay,
+take the union with cached events, verify all of them), or as a short-circuit after a verified
+terminal event (`REDEEMED` or `REVOKED`). Never short-circuit on `ISSUED`: a later terminal
+event would be missed. In Java the read goes through `LedgerV2EventSource`, so a cache can wrap
+the relay query under these rules.
+
 Terminal detection fails closed: non-empty `merchantMetadata` that is not one strictly
 parseable JSON object, or whose `terminal` is `true` or `"true"`, is never published.
 

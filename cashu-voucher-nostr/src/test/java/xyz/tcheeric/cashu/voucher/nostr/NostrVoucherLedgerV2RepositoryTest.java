@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -81,7 +81,7 @@ class NostrVoucherLedgerV2RepositoryTest {
         NostrClientAdapter client = mock(NostrClientAdapter.class);
         List<GenericEvent> relay = new ArrayList<>();
         when(client.publishEvent(any(), anyLong())).thenAnswer(inv -> relay.add(inv.getArgument(0)));
-        when(client.queryEvents(anyString(), anyLong())).thenAnswer(inv -> List.copyOf(relay));
+        when(client.queryEvents(anyMap(), anyLong())).thenAnswer(inv -> List.copyOf(relay));
         NostrVoucherLedgerV2Repository repo = new NostrVoucherLedgerV2Repository(client, List.of(PLATFORM));
 
         repo.publish(new LedgerEntry(VoucherStatus.ISSUED, fields(), null), PLATFORM_SK, PLATFORM_SK);

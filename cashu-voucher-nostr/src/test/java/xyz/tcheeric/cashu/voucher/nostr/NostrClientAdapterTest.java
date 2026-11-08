@@ -176,7 +176,7 @@ class NostrClientAdapterTest {
         adapter.connect();
 
         assertThrows(NullPointerException.class, () -> {
-            adapter.queryEvents(null, 1000L);
+            adapter.queryEvents((String) null, 1000L);
         });
     }
 

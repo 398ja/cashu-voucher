@@ -32,6 +32,7 @@ import java.util.Set;
 public class NostrVoucherLedgerV2Repository {
 
     private final NostrClientAdapter nostrClient;
+    private final LedgerV2EventSource eventSource;
     private final Set<String> trustedIssuerKeys;
     private final long publishTimeoutMs;
     private final long queryTimeoutMs;
@@ -47,7 +48,19 @@ public class NostrVoucherLedgerV2Repository {
     public NostrVoucherLedgerV2Repository(@NonNull NostrClientAdapter nostrClient,
                                           @NonNull Collection<String> trustedIssuerKeys,
                                           long publishTimeoutMs, long queryTimeoutMs) {
+        this(nostrClient, nostrClient::queryEvents, trustedIssuerKeys, publishTimeoutMs, queryTimeoutMs);
+    }
+
+    /**
+     * @param eventSource where events are read from (default: the adapter's filtered relay query);
+     *        must throw rather than answer incompletely, see {@link LedgerV2EventSource}
+     */
+    public NostrVoucherLedgerV2Repository(@NonNull NostrClientAdapter nostrClient,
+                                          @NonNull LedgerV2EventSource eventSource,
+                                          @NonNull Collection<String> trustedIssuerKeys,
+                                          long publishTimeoutMs, long queryTimeoutMs) {
         this.nostrClient = nostrClient;
+        this.eventSource = eventSource;
         this.trustedIssuerKeys = Set.copyOf(trustedIssuerKeys);
         this.publishTimeoutMs = publishTimeoutMs;
         this.queryTimeoutMs = queryTimeoutMs;
@@ -94,14 +107,29 @@ public class NostrVoucherLedgerV2Repository {
         return out;
     }
 
-    /** The folded status of a voucher, or empty when no event is accepted. */
+    /**
+     * The folded status of a voucher, or empty when every relay answered and no event is accepted.
+     *
+     * @throws VoucherNostrException when the relays could not answer completely (no connection,
+     *         error, or no EOSE before the timeout). Never answers empty in that case, so a
+     *         revoked or redeemed voucher cannot read as unknown.
+     */
     public Optional<VoucherLedgerV2.Resolved> resolve(byte @NonNull [] ref) {
         return VoucherLedgerV2.resolve(verifiedEvents(ref), ref, trustedIssuerKeys);
     }
 
     private List<LedgerEvent> verifiedEvents(byte[] ref) {
-        String d = VoucherLedgerRef.locator(ref);
-        List<GenericEvent> events = nostrClient.queryEvents("ledger-v2-" + d.substring(0, 16), queryTimeoutMs);
+        List<GenericEvent> events;
+        try {
+            events = eventSource.query(filterFor(ref), queryTimeoutMs);
+        } catch (VoucherNostrException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new VoucherNostrException("ledger v2 query failed", e);
+        }
+        if (events == null) {
+            throw new VoucherNostrException("ledger v2 query returned no answer");
+        }
         List<LedgerEvent> verified = new ArrayList<>();
         for (GenericEvent event : events) {
             VoucherLedgerV2Event.fromVerifiedEvent(event).ifPresent(verified::add);

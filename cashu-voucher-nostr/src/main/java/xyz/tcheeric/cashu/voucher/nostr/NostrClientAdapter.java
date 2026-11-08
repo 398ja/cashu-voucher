@@ -282,6 +282,55 @@ public class NostrClientAdapter {
     }
 
     /**
+     * Runs a NIP-01 query with {@code filter} on every connected relay and returns the union of
+     * the events, deduplicated by id.
+     *
+     * <p>For each relay this opens a WebSocket, sends {@code ["REQ", sub, filter]}, collects every
+     * {@code EVENT} for {@code sub} until {@code EOSE}, then sends {@code ["CLOSE", sub]}. Values
+     * under {@code kinds} are sent as JSON integers, all others as strings. A {@code limit} is
+     * refused: readers of the voucher ledger must see every event at a locator.
+     *
+     * <p>Fails closed: if any relay cannot be reached, answers {@code CLOSED}, errors, or does not
+     * reach {@code EOSE} before {@code timeoutMs}, this throws instead of returning a partial or
+     * empty answer, so "no events" always means every relay said so.
+     *
+     * @param filter NIP-01 filter, e.g. {@code {"kinds":["30078"],"#d":["..."]}}
+     * @param timeoutMs overall deadline for every relay to reach EOSE
+     * @return the matching events (may be empty only when every relay answered EOSE)
+     * @throws VoucherNostrException if not connected or any relay did not answer completely
+     */
+    public List<GenericEvent> queryEvents(@NonNull Map<String, List<String>> filter, long timeoutMs) {
+        ensureConnected();
+        if (filter.containsKey("limit")) {
+            throw new IllegalArgumentException("limit is not allowed");
+        }
+        String subscriptionId = generateSubscriptionId();
+        Map<String, GenericEvent> eventMap = new ConcurrentHashMap<>();
+        Map<String, CompletableFuture<List<GenericEvent>>> futures = new LinkedHashMap<>();
+        for (String relayUrl : connections.keySet()) {
+            futures.put(relayUrl, RelayQuery.run(relayUrl, subscriptionId, filter, timeoutMs));
+        }
+        for (Map.Entry<String, CompletableFuture<List<GenericEvent>>> entry : futures.entrySet()) {
+            List<GenericEvent> events;
+            try {
+                events = entry.getValue().get(timeoutMs, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                futures.values().forEach(f -> f.cancel(true));
+                throw new VoucherNostrException("Relay query interrupted", e);
+            } catch (Exception e) {
+                futures.values().forEach(f -> f.cancel(true));
+                throw new VoucherNostrException("Relay did not answer the query completely: " + entry.getKey(),
+                        e instanceof java.util.concurrent.ExecutionException && e.getCause() != null ? e.getCause() : e);
+            }
+            for (GenericEvent event : events) {
+                eventMap.putIfAbsent(event.getId(), event);
+            }
+        }
+        return new ArrayList<>(eventMap.values());
+    }
+
+    /**
      * Checks if currently connected to at least one relay.
      *
      * @return true if connected, false otherwise
