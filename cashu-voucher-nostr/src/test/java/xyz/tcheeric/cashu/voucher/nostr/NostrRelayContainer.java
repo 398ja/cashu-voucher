@@ -2,13 +2,18 @@ package xyz.tcheeric.cashu.voucher.nostr;
 
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Testcontainer for nostr-rs-relay.
+ * Testcontainer for a real Nostr relay: strfry, the relay the platform runs.
  *
  * <p>Provides a real Nostr relay instance for integration testing.
- * Uses the scsibug/nostr-rs-relay Docker image.
+ *
+ * <p>Not nostr-rs-relay: {@code scsibug/nostr-rs-relay:0.8.9} intermittently panics in its
+ * websocket task ({@code quanta} "po2_denom was zero!") right after accepting a connection, so the
+ * socket opens but no {@code OK} ever comes back. A publish test then waits out its whole timeout,
+ * which made the real-relay publish test fail in roughly every other full-module run.
  *
  * <h3>Usage Example</h3>
  * <pre>
@@ -27,15 +32,25 @@ import org.testcontainers.utility.DockerImageName;
  */
 public class NostrRelayContainer extends GenericContainer<NostrRelayContainer> {
 
-    /**
-     * Default nostr-rs-relay Docker image.
-     */
-    private static final String DEFAULT_IMAGE = "scsibug/nostr-rs-relay:0.8.9";
+    /** strfry, pinned by digest so a new upstream build cannot change the tests' relay. */
+    private static final String DEFAULT_IMAGE =
+            "ghcr.io/hoytech/strfry@sha256:c52807349888ef8a9f8720f3e51ee81af7e20114bad105915febb78f9c604cb1";
+
+    /** WebSocket port strfry listens on. */
+    private static final int RELAY_PORT = 7777;
 
     /**
-     * Default WebSocket port for Nostr relay.
+     * The image's own config binds 127.0.0.1, which is unreachable through Docker's port mapping.
+     * This is that config with only the bind address changed; everything else is strfry's default.
      */
-    private static final int RELAY_PORT = 8080;
+    private static final String CONFIG = """
+            db = "./strfry-db/"
+            relay {
+                bind = "0.0.0.0"
+                port = 7777
+                nofiles = 0
+            }
+            """;
 
     /**
      * Creates a new Nostr relay container with the default image.
@@ -52,12 +67,15 @@ public class NostrRelayContainer extends GenericContainer<NostrRelayContainer> {
     public NostrRelayContainer(String dockerImageName) {
         super(DockerImageName.parse(dockerImageName));
 
-        // Expose the relay WebSocket port
         withExposedPorts(RELAY_PORT);
+        withCopyToContainer(Transferable.of(CONFIG), "/etc/strfry.conf");
+        withCommand("--config=/etc/strfry.conf", "relay");
 
-        // Wait for the relay to be ready
-        // nostr-rs-relay doesn't have a health endpoint, so wait for port
-        waitingFor(Wait.forListeningPort());
+        // strfry serves its NIP-11 document on the relay port once it accepts connections.
+        waitingFor(Wait.forHttp("/")
+                .forPort(RELAY_PORT)
+                .withHeader("Accept", "application/nostr+json")
+                .forStatusCode(200));
 
         // Set resource limits
         withCreateContainerCmdModifier(cmd -> {

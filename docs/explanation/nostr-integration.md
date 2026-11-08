@@ -275,7 +275,17 @@ List<String> relays = List.of(
 
 ### Public Ledger Privacy
 
-The ledger is **intentionally public**:
+**Ledger v2 (0.18.0) replaces the plaintext ledger described below.** The ledger is still
+public, but every v2 event is encrypted (NIP-44 v2 under a key derived from the voucher's
+reference), signed by a key used for that voucher only, and stored at an address (`d`) that
+cannot be linked to the voucher, its stall or its proofs. Only someone who knows the voucher's
+issuer and id (a holder, the stall, the portal, or an auditor given that one reference) can read
+it. Relays and the public see ciphertext of a bucketed size, plus an expiry rounded to a day.
+See [voucher-ledger-v2.md](voucher-ledger-v2.md) for the wire contract, and
+`NostrVoucherLedgerV2Repository` / `VoucherLedgerV2Event` for the adapter. v1 keeps working
+unchanged and stays the default until callers switch.
+
+Ledger v1 (`VoucherLedgerEvent`, superseded) is **intentionally public**:
 - Voucher status visible to anyone
 - Enables third-party verification
 - Auditable by merchants and customers

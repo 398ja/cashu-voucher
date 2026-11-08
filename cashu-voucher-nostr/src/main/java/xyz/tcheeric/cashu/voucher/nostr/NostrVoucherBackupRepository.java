@@ -2,7 +2,9 @@ package xyz.tcheeric.cashu.voucher.nostr;
 
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import nostr.base.PrivateKey;
 import nostr.event.impl.GenericEvent;
+import nostr.id.Identity;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherBackupPort;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
 import xyz.tcheeric.cashu.voucher.nostr.events.VoucherBackupPayload;
@@ -171,9 +173,9 @@ public class NostrVoucherBackupRepository implements VoucherBackupPort {
                     userPublicKey
             );
 
-            // TODO: Sign event with user's private key
-            // This will be implemented when we add key management
-            // For now, the event is published unsigned (will fail on real relays)
+            // Sign with the user's key: relays reject unsigned events, and restore only trusts
+            // events whose signature verifies under the user's own key.
+            backupEvent.setSignature(Identity.create(new PrivateKey(userPrivateKey)).sign(backupEvent));
 
             // Publish to relays
             boolean success = nostrClient.publishEvent(backupEvent, publishTimeoutMs);
@@ -230,18 +232,10 @@ public class NostrVoucherBackupRepository implements VoucherBackupPort {
             // Derive public key from private key
             String userPublicKey = derivePublicKey(userPrivateKey);
 
-            // Generate subscription ID for backup query
-            String subscriptionId = "voucher_backup_" + userPublicKey.substring(0, 8);
-
-            // TODO: Set up proper filter for backup events query
-            // Filter should include:
-            // - kind: 4 (encrypted DM)
-            // - authors: [userPublicKey]
-            // - #p: [userPublicKey] (self-addressed)
-            // - #backup: ["vouchers"]
-
-            // Query all backup events
-            List<GenericEvent> backupEvents = nostrClient.queryEvents(subscriptionId, queryTimeoutMs);
+            // Fails closed: throws if any relay does not answer completely (EOSE), so an empty
+            // list really means "no backups", never "relay down".
+            List<GenericEvent> backupEvents = authentic(
+                    nostrClient.queryEvents(filterFor(userPublicKey), queryTimeoutMs), userPublicKey);
 
             log.debug("Found {} backup event(s) from relays", backupEvents.size());
 
@@ -332,14 +326,9 @@ public class NostrVoucherBackupRepository implements VoucherBackupPort {
             // Derive public key from private key
             String userPublicKey = derivePublicKey(userPrivateKey);
 
-            // Generate subscription ID for backup query
-            String subscriptionId = "voucher_backup_check_" + userPublicKey.substring(0, 8);
-
-            // TODO: Set up proper filter for backup events query
-            // Query with limit=1 for efficiency
-
-            // Query backup events
-            List<GenericEvent> backupEvents = nostrClient.queryEvents(subscriptionId, queryTimeoutMs);
+            // Same filter as restore, no limit (the adapter refuses one). Fails closed.
+            List<GenericEvent> backupEvents = authentic(
+                    nostrClient.queryEvents(filterFor(userPublicKey), queryTimeoutMs), userPublicKey);
 
             boolean hasBackups = !backupEvents.isEmpty();
             log.debug("Has backups: {}", hasBackups);
@@ -363,17 +352,44 @@ public class NostrVoucherBackupRepository implements VoucherBackupPort {
      * @throws VoucherNostrException if key derivation fails
      */
     private String derivePublicKey(String privateKey) {
-        // TODO: Implement proper secp256k1 public key derivation
-        // For now, return a placeholder
-        // This should use: PublicKey.fromPrivateKey(PrivateKey.fromHex(privateKey))
+        try {
+            return Identity.create(new PrivateKey(privateKey)).getPublicKey().toString();
+        } catch (RuntimeException e) {
+            throw new VoucherNostrException("Invalid user private key", e);
+        }
+    }
 
-        log.debug("Deriving public key from private key (placeholder)");
+    /**
+     * NIP-01 filter for a user's backups: kind 4, authored by and addressed to the user, tagged
+     * backup=vouchers. No limit.
+     */
+    static Map<String, List<String>> filterFor(String userPublicKey) {
+        return Map.of(
+                "kinds", List.of(String.valueOf(VoucherBackupPayload.KIND_ENCRYPTED_DM)),
+                "authors", List.of(userPublicKey),
+                "#p", List.of(userPublicKey),
+                "#" + VoucherBackupPayload.TAG_BACKUP, List.of("vouchers"));
+    }
 
-        // Temporary placeholder - this will fail in real usage
-        // Real implementation needs secp256k1 curve operations
-        throw new VoucherNostrException(
-                "Public key derivation not yet implemented. " +
-                "Please provide both private and public keys explicitly.");
+    /** Keeps only events authored by the user whose NIP-01 id and signature verify. */
+    private static List<GenericEvent> authentic(List<GenericEvent> events, String userPublicKey) {
+        List<GenericEvent> out = new ArrayList<>();
+        for (GenericEvent e : events) {
+            boolean ok = e != null && e.getPubKey() != null
+                    && userPublicKey.equalsIgnoreCase(e.getPubKey().toString());
+            try {
+                ok = ok && NostrEventSignatures.verify(e);
+            } catch (RuntimeException ex) {
+                ok = false;
+            }
+            if (ok) {
+                out.add(e);
+            } else {
+                log.warn("Discarding backup event not authored and signed by the user: eventId={}",
+                        e == null ? null : e.getId());
+            }
+        }
+        return out;
     }
 
     /**

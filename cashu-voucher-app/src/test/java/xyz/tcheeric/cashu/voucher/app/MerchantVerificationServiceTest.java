@@ -242,6 +242,21 @@ class MerchantVerificationServiceTest {
         }
 
         @Test
+        @DisplayName("refuses when the ledger refuses a flooded locator (TOO_MANY_CANDIDATES)")
+        void shouldRefuseOnTooManyCandidates() {
+            SignedVoucher voucher = createValidVoucher(ISSUER_ID);
+            String voucherId = voucher.getSecret().getVoucherId().toString();
+            when(ledgerPort.queryStatus(voucherId)).thenThrow(
+                    new xyz.tcheeric.cashu.voucher.domain.ledger.LedgerRefusedException(
+                            xyz.tcheeric.cashu.voucher.domain.ledger.LedgerRefusal.TOO_MANY_CANDIDATES, "flood"));
+
+            MerchantVerificationService.VerificationResult result = service.verifyOnline(voucher, ISSUER_ID);
+
+            assertThat(result.isValid()).isFalse();
+            assertThat(result.getErrorMessage()).contains("TOO_MANY_CANDIDATES");
+        }
+
+        @Test
         @DisplayName("should reject blank expected issuer ID")
         void shouldRejectBlankExpectedIssuerId() {
             // Given

@@ -89,7 +89,7 @@ class NostrClientAdapterTest {
     }
 
     @Test
-    @DisplayName("Should publish event when connected")
+    @DisplayName("Publish with no OK from any relay is a failure, never simulated success")
     void testPublishEvent() {
         adapter.connect();
 
@@ -97,9 +97,8 @@ class NostrClientAdapterTest {
         event.setKind(1);
         event.setContent("Test note");
 
-        boolean result = adapter.publishEvent(event, 1000L);
-        // Current implementation simulates success
-        assertTrue(result);
+        // Unsigned, and nothing listens at the test URLs: no relay says OK=true.
+        assertFalse(adapter.publishEvent(event, 1000L));
     }
 
     @Test
@@ -115,25 +114,20 @@ class NostrClientAdapterTest {
     }
 
     @Test
-    @DisplayName("Should query events when connected")
+    @DisplayName("Query to an unreachable relay fails closed")
     void testQueryEvents() {
         adapter.connect();
 
-        String subscriptionId = "test-sub-1";
-        List<GenericEvent> events = adapter.queryEvents(subscriptionId, 1000L);
-
-        assertNotNull(events);
-        // Current implementation returns empty list
-        assertTrue(events.isEmpty());
+        // No relay is listening at the test URLs: the filtered query must throw, never answer empty.
+        assertThrows(VoucherNostrException.class, () ->
+                adapter.queryEvents(java.util.Map.of("kinds", List.of("1")), 500L));
     }
 
     @Test
     @DisplayName("Should fail to query when not connected")
     void testQueryEventsNotConnected() {
-        String subscriptionId = "test-sub-1";
-
         assertThrows(VoucherNostrException.class, () -> {
-            adapter.queryEvents(subscriptionId, 1000L);
+            adapter.queryEvents(java.util.Map.of("kinds", List.of("1")), 1000L);
         });
     }
 
@@ -171,12 +165,12 @@ class NostrClientAdapterTest {
     }
 
     @Test
-    @DisplayName("Should handle null subscription ID gracefully")
+    @DisplayName("Should reject a null filter")
     void testQueryWithNullSubscriptionId() {
         adapter.connect();
 
         assertThrows(NullPointerException.class, () -> {
-            adapter.queryEvents(null, 1000L);
+            adapter.queryEvents((java.util.Map<String, List<String>>) null, 1000L);
         });
     }
 

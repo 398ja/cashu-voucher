@@ -21,7 +21,9 @@ import java.util.Optional;
  *   <li><b>Fingerprint check</b>: Fast lookup in redemption tracking store</li>
  *   <li><b>Ledger status check</b>: Verify voucher is in ISSUED state</li>
  *   <li><b>Atomic recording</b>: Record redemption before updating ledger</li>
- *   <li><b>Ledger update</b>: Mark voucher as REDEEMED</li>
+ *   <li><b>Ledger update</b>: Mark voucher as REDEEMED. If this fails the result is
+ *       {@code LEDGER_PUBLISH_PENDING} (not success): the local record is kept, but the
+ *       redemption is not visible to other merchants until the publish is retried.</li>
  * </ol>
  *
  * <h3>Concurrency Safety</h3>
@@ -189,9 +191,19 @@ public class VoucherRedemptionService {
             ledgerPort.updateStatus(voucherId, VoucherStatus.REDEEMED);
             log.info("Voucher redeemed successfully: voucherId={}, merchantId={}", voucherId, merchantId);
         } catch (Exception e) {
-            // Redemption was recorded but ledger update failed
-            // This is acceptable - the fingerprint record prevents re-redemption
-            log.error("Ledger update failed after redemption: voucherId={}", voucherId, e);
+            // The local record stays: it is the atomic guard against a concurrent second
+            // redemption here and must be written before the ledger. But only this store knows
+            // the voucher is spent; other merchants' online checks read the ledger and would still
+            // see ISSUED. So this is not a finished redemption: report it as pending, never as
+            // success, so the caller does not hand out value until the REDEEMED publish lands.
+            log.error("Ledger REDEEMED publish failed after local record: voucherId={}", voucherId, e);
+            return RedeemVoucherResponse.builder()
+                    .success(false)
+                    .voucherId(voucherId)
+                    .error("LEDGER_PUBLISH_PENDING")
+                    .message("Redemption recorded locally but not published to the ledger; not finalised")
+                    .fingerprint(fingerprint)
+                    .build();
         }
 
         return RedeemVoucherResponse.builder()
@@ -213,6 +225,29 @@ public class VoucherRedemptionService {
      */
     public RedeemVoucherResponse redeem(SignedVoucher voucher, String merchantId) {
         return redeem(voucher, merchantId, true);
+    }
+
+    /**
+     * Retries the ledger REDEEMED publish for a redemption that returned
+     * {@code LEDGER_PUBLISH_PENDING}. Calling {@link #redeem} again would stop at the fingerprint
+     * check, so this is the way to finalise it. Safe to repeat: REDEEMED is terminal.
+     *
+     * @return true once the publish succeeded
+     * @throws IllegalStateException if this voucher has no local redemption record
+     */
+    public boolean finalisePendingRedemption(@NonNull SignedVoucher voucher) {
+        String fingerprint = VoucherFingerprint.compute(voucher);
+        if (!redemptionPort.isRedeemed(fingerprint)) {
+            throw new IllegalStateException("No local redemption record to finalise");
+        }
+        String voucherId = voucher.getVoucherId().toString();
+        try {
+            ledgerPort.updateStatus(voucherId, VoucherStatus.REDEEMED);
+            return true;
+        } catch (Exception e) {
+            log.error("Ledger REDEEMED publish retry failed: voucherId={}", voucherId, e);
+            return false;
+        }
     }
 
     /**

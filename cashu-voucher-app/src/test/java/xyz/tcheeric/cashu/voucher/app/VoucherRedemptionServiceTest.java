@@ -267,8 +267,8 @@ class VoucherRedemptionServiceTest {
     class LedgerUpdateHandlingTests {
 
         @Test
-        @DisplayName("should succeed even if ledger update fails")
-        void shouldSucceedEvenIfLedgerUpdateFails() {
+        @DisplayName("ledger REDEEMED publish fails: not success, record kept, reported pending")
+        void ledgerPublishFailureIsNotSuccess() {
             // Given - redemption recorded but ledger update fails
             SignedVoucher voucher = createValidVoucher(ISSUER_ID);
             String fingerprint = VoucherFingerprint.compute(voucher);
@@ -281,8 +281,25 @@ class VoucherRedemptionServiceTest {
             // When
             RedeemVoucherResponse response = service.redeem(voucher, ISSUER_ID);
 
-            // Then - still succeeds because fingerprint prevents re-redemption
-            assertThat(response.isSuccess()).isTrue();
+            // Then - other merchants would still read ISSUED, so this must not report success
+            assertThat(response.isSuccess()).isFalse();
+            assertThat(response.getError()).isEqualTo("LEDGER_PUBLISH_PENDING");
+            verify(redemptionPort).tryRecordRedemption(eq(fingerprint), anyString(), eq(ISSUER_ID));
+
+            // Retry: still failing reports false; once the ledger accepts, finalised.
+            when(redemptionPort.isRedeemed(fingerprint)).thenReturn(true);
+            assertThat(service.finalisePendingRedemption(voucher)).isFalse();
+            doNothing().when(ledgerPort).updateStatus(anyString(), any());
+            assertThat(service.finalisePendingRedemption(voucher)).isTrue();
+        }
+
+        @Test
+        @DisplayName("finalisePendingRedemption refuses without a local record")
+        void finaliseWithoutRecordRefused() {
+            SignedVoucher voucher = createValidVoucher(ISSUER_ID);
+            when(redemptionPort.isRedeemed(anyString())).thenReturn(false);
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.finalisePendingRedemption(voucher))
+                    .isInstanceOf(IllegalStateException.class);
         }
     }
 
