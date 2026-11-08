@@ -1,20 +1,27 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.dataformat.cbor.CBORFactory;
+import com.fasterxml.jackson.dataformat.cbor.CBORGenerator;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import xyz.tcheeric.cashu.common.TokenV4;
 import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,6 +29,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static xyz.tcheeric.cashu.voucher.domain.ByReferenceFixtures.docs;
 import static xyz.tcheeric.cashu.voucher.domain.ByReferenceFixtures.document;
 import static xyz.tcheeric.cashu.voucher.domain.ByReferenceFixtures.parse;
@@ -123,6 +131,30 @@ class VoucherByReferenceVectorsTest {
         negatives.add(negative("uppercase-key", v2(n, good), Map.of(goodKey.toUpperCase(), Hex.toHexString(good)),
                 "missing", false));
         root.put("negatives", negatives);
+
+        // Malformed `v` maps in a whole token (review L5): every decoder must refuse these, not
+        // drop the key (a JS `__proto__`), keep the last of two, or stringify a non-text key.
+        String by = v2(proofNonce(98), good);
+        List<Map<String, Object>> maps = new ArrayList<>();
+        maps.add(tokenMap("well-formed", by, true, g -> {
+            g.writeFieldName(goodKey);
+            g.writeBinary(good);
+        }));
+        maps.add(tokenMap("proto-key", by, false, g -> {
+            g.writeFieldName("__proto__");
+            g.writeBinary(good);
+        }));
+        maps.add(tokenMap("duplicate-key", by, false, g -> {
+            g.writeFieldName(goodKey);
+            g.writeBinary(good);
+            g.writeFieldName(goodKey);
+            g.writeBinary(good);
+        }));
+        maps.add(tokenMap("non-text-key", by, false, g -> {
+            g.writeFieldId(7);
+            g.writeBinary(good);
+        }));
+        root.put("token_documents_maps", maps);
         return root;
     }
 
@@ -153,6 +185,86 @@ class VoucherByReferenceVectorsTest {
         m.put("documents_acceptable", documentsAcceptable);
         m.put("verifiable", false);
         return m;
+    }
+
+    private interface MapBody {
+        void write(CBORGenerator g) throws Exception;
+    }
+
+    /** A one-proof cashuB token whose `v` map is written raw by {@code body}. */
+    private static Map<String, Object> tokenMap(String name, String secret, boolean accepted, MapBody body)
+            throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (CBORGenerator g = new CBORFactory().createGenerator(out)) {
+            g.writeStartObject();
+            g.writeStringField("m", "http://mint.test");
+            g.writeStringField("u", "sat");
+            g.writeFieldName("t");
+            g.writeStartArray();
+            g.writeStartObject();
+            g.writeFieldName("i");
+            g.writeBinary(Hex.decode("00ab"));
+            g.writeFieldName("p");
+            g.writeStartArray();
+            g.writeStartObject();
+            g.writeNumberField("a", 1);
+            g.writeStringField("s", secret);
+            g.writeFieldName("c");
+            g.writeBinary(Hex.decode("02" + "11".repeat(32)));
+            g.writeEndObject();
+            g.writeEndArray();
+            g.writeEndObject();
+            g.writeEndArray();
+            g.writeFieldName("v");
+            g.writeStartObject();
+            body.write(g);
+            g.writeEndObject();
+            g.writeEndObject();
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("name", name);
+        m.put("token", "cashuB" + Base64.getUrlEncoder().withoutPadding().encodeToString(out.toByteArray()));
+        m.put("accepted", accepted);
+        return m;
+    }
+
+    /**
+     * Strict structural read of the token's `v` map: text keys only, no duplicates. cashu-lib's
+     * {@code TokenV4.deserialize} already refuses a {@code __proto__} or non-text key (not hex), but
+     * keeps the last of duplicate keys, so duplicates are checked here (follow-up for cashu-lib).
+     */
+    private static boolean strictDocumentsMap(String token) {
+        byte[] cbor = Base64.getUrlDecoder().decode(token.substring("cashuB".length()));
+        CBORFactory strict = CBORFactory.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build();
+        try (JsonParser p = strict.createParser(cbor)) {
+            JsonNode root = new ObjectMapper(strict).readTree(p);
+            return root.get("v") != null && root.get("v").isObject();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @Test
+    void replaysTokenDocumentsMaps() throws Exception {
+        JsonNode root = JSON.readTree(fileContents());
+        assertThat(root.get("token_documents_maps")).hasSizeGreaterThanOrEqualTo(4);
+        for (JsonNode c : root.get("token_documents_maps")) {
+            String name = c.get("name").asText();
+            String token = c.get("token").asText();
+            boolean accepted = c.get("accepted").asBoolean();
+            boolean lib;
+            try {
+                lib = TokenV4.deserialize(token).hasVoucherDocuments();
+            } catch (IllegalArgumentException e) {
+                lib = false;
+            }
+            assertThat(lib && strictDocumentsMap(token)).as(name).isEqualTo(accepted);
+            if (!name.equals("duplicate-key")) {
+                assertThat(lib).as(name + " (cashu-lib alone)").isEqualTo(accepted);
+            }
+        }
+        assertThatThrownBy(() -> TokenV4.deserialize(root.get("token_documents_maps").get(1).get("token").asText()))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private static Map<String, String> docsHex(byte[] doc) {
