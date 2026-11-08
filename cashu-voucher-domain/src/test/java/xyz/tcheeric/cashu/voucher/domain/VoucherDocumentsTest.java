@@ -200,4 +200,21 @@ class VoucherDocumentsTest {
         assertThat(VoucherValidator.validateProofSecret(ref,
                 Map.of(VoucherDocuments.key(captured().getData()), other)).getErrorMessage()).contains("does not match");
     }
+
+    @Test
+    @DisplayName("validate refuses documents adding up to more than 1 MiB, though each is within its own bound")
+    void totalBound() {
+        Map<String, byte[]> atLimit = new java.util.TreeMap<>();
+        for (int i = 0; i < 16; i++) {
+            byte[] doc = new byte[VoucherDocuments.MAX_DOCUMENT_BYTES];
+            java.util.Arrays.fill(doc, (byte) (i + 1));
+            atLimit.put(VoucherDocuments.key(doc), doc);
+        }
+        assertThat(VoucherDocuments.validate(atLimit, 1000)).isEmpty();
+
+        Map<String, byte[]> overLimit = new java.util.TreeMap<>(atLimit);
+        byte[] extra = {42};
+        overLimit.put(VoucherDocuments.key(extra), extra);
+        assertThat(VoucherDocuments.validate(overLimit, 1000)).anyMatch(e -> e.contains("in total"));
+    }
 }

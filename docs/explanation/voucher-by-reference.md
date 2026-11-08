@@ -53,7 +53,8 @@ One new top-level key, written last:
 - Keys are 64 lowercase hex characters. Values are CBOR byte strings.
 - Omitted when no proof is by reference. Never emitted empty.
 - **A decoder refuses** a token when a key is not `hex(SHA256(value))`, a value is empty
-  or larger than 65,536 bytes, or there are more entries than proofs.
+  or larger than 65,536 bytes, there are more entries than proofs, or the values add up to
+  more than 1,048,576 bytes (1 MiB).
 - A by-reference proof whose document is missing is **incomplete**: it decodes, but every
   verifier reports it unverifiable. It is never treated as plain sats.
 - Entries no proof references are dropped on re-encode.
@@ -68,8 +69,9 @@ One new top-level key, written last:
 
 - Optional. Omitted when no input is by reference.
 - The mint refuses the request when a key is not `hex(SHA256(value))`, a value is empty or
-  larger than 65,536 bytes, there are more entries than inputs, or a by-reference input's
-  document is missing. Entries no input references are ignored.
+  larger than 65,536 bytes, the values add up to more than 1,048,576 bytes, there are more
+  entries than inputs, or a by-reference input's document is missing. Entries no input
+  references are ignored. The size checks run before any hashing.
 - **The mint stays stateless.** It verifies from the documents in the request and stores
   nothing new. It sees exactly what it sees today: the full voucher is in every v1 secret.
 - Outputs are blinded, so the mint cannot check that a new proof references the right

@@ -30,6 +30,12 @@ public final class VoucherDocuments {
     /** Largest document accepted, in bytes. */
     public static final int MAX_DOCUMENT_BYTES = 65_536;
 
+    /**
+     * Largest total of document bytes one token, request or payload may carry. With up to 1000
+     * proofs per container, the per-document bound alone would allow 64 MiB.
+     */
+    public static final int MAX_TOTAL_DOCUMENT_BYTES = 1_048_576;
+
     /** Length of a by-reference {@code data}: one SHA-256. */
     public static final int REFERENCE_BYTES = 32;
 
@@ -64,8 +70,9 @@ public final class VoucherDocuments {
      * The reasons a document map must be refused, or an empty list when it is acceptable.
      *
      * <p>Refused: a key that is not 64 lowercase hex characters or not {@code hex(SHA256(value))},
-     * an empty or null value, a value over {@link #MAX_DOCUMENT_BYTES}, or more entries than
-     * {@code maxEntries} (the number of proofs or inputs). A null map is acceptable (no documents).
+     * an empty or null value, a value over {@link #MAX_DOCUMENT_BYTES}, values adding up to more
+     * than {@link #MAX_TOTAL_DOCUMENT_BYTES}, or more entries than {@code maxEntries} (the number
+     * of proofs or inputs). A null map is acceptable (no documents).
      */
     public static List<String> validate(Map<String, byte[]> documents, int maxEntries) {
         List<String> errors = new ArrayList<>();
@@ -74,6 +81,15 @@ public final class VoucherDocuments {
         }
         if (documents.size() > Math.max(0, maxEntries)) {
             errors.add("Too many voucher documents: " + documents.size() + " > " + Math.max(0, maxEntries));
+        }
+        // Sizes before hashes, so an oversized map costs no hashing.
+        long total = 0;
+        for (byte[] value : documents.values()) {
+            total += value == null ? 0 : value.length;
+        }
+        if (total > MAX_TOTAL_DOCUMENT_BYTES) {
+            errors.add("Voucher documents exceed " + MAX_TOTAL_DOCUMENT_BYTES + " bytes in total");
+            return errors;
         }
         for (Map.Entry<String, byte[]> entry : documents.entrySet()) {
             String key = entry.getKey();
