@@ -113,6 +113,9 @@ public class NostrVoucherLedgerV2Repository {
      * @throws VoucherNostrException when the relays could not answer completely (no connection,
      *         error, or no EOSE before the timeout). Never answers empty in that case, so a
      *         revoked or redeemed voucher cannot read as unknown.
+     * @throws xyz.tcheeric.cashu.voucher.domain.ledger.LedgerRefusedException
+     *         {@code TOO_MANY_CANDIDATES} when the locator holds more than
+     *         {@link VoucherLedgerV2#MAX_CANDIDATES_PER_LOCATOR} events
      */
     public Optional<VoucherLedgerV2.Resolved> resolve(byte @NonNull [] ref) {
         return VoucherLedgerV2.resolve(verifiedEvents(ref), ref, trustedIssuerKeys);
@@ -130,6 +133,8 @@ public class NostrVoucherLedgerV2Repository {
         if (events == null) {
             throw new VoucherNostrException("ledger v2 query returned no answer");
         }
+        // Refuse a flood before paying a NIP-01 Schnorr verify per event. Never truncate.
+        VoucherLedgerV2.checkCandidateCount(events.size());
         List<LedgerEvent> verified = new ArrayList<>();
         for (GenericEvent event : events) {
             VoucherLedgerV2Event.fromVerifiedEvent(event).ifPresent(verified::add);

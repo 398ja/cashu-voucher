@@ -165,10 +165,11 @@ Each is refused by the inner signature, but each costs the reader a fetch, so re
 rely on a small relay `limit` (a flood could push the genuine events out of the result).
 
 A valid-MAC flood still costs a reader about one Schnorr verify per event, so a reader
-processes at most **256** candidate events per locator (`MAX_CANDIDATES_PER_LOCATOR`). It sorts
-the fetched events by `created_at` ascending, then by event `id` ascending, takes the first 256,
-and logs a warning when that truncates. Every reader therefore folds the same set. Genuine
-vouchers carry a handful of events, far below the cap.
+accepts at most **4096** events per locator (`MAX_CANDIDATES_PER_LOCATOR`). Above that it
+refuses the whole answer (`TOO_MANY_CANDIDATES`) and fails closed, exactly as for a relay
+failure. It must never truncate to a subset: `created_at`, the event id and the outer key are
+all attacker-chosen, so any selection rule lets a flood push the genuine `REDEEMED` or
+`REVOKED` event out and fail open. Genuine vouchers carry a handful of events, far below the cap.
 
 A reader that cannot get a complete answer (no relay connection, an error, a `CLOSED`, or no
 `EOSE` before its timeout) must fail closed: report an error, never "no ledger entry". An

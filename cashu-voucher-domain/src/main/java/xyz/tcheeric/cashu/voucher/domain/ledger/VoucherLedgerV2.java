@@ -44,12 +44,27 @@ public final class VoucherLedgerV2 {
     public static final int KIND = 30078;
 
     /**
-     * Most events {@link #resolve} processes for one locator. A real voucher has a handful
-     * (ISSUED, maybe REDEEMED or REVOKED, a few re-publishes); the cap bounds a flood's cost.
+     * Most events a reader accepts at one locator. A real voucher has a handful (ISSUED, maybe
+     * REDEEMED or REVOKED, a few re-publishes). Above this the answer is refused (fail closed),
+     * never truncated.
      */
-    public static final int MAX_CANDIDATES_PER_LOCATOR = 256;
+    public static final int MAX_CANDIDATES_PER_LOCATOR = 4096;
 
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(VoucherLedgerV2.class);
+
+    /**
+     * Refuses a locator answer larger than {@link #MAX_CANDIDATES_PER_LOCATOR}.
+     *
+     * @throws LedgerRefusedException {@code TOO_MANY_CANDIDATES}
+     */
+    public static void checkCandidateCount(int count) {
+        if (count > MAX_CANDIDATES_PER_LOCATOR) {
+            LOG.warn("Ledger v2 locator has {} candidate events (cap {}): refusing", count,
+                    MAX_CANDIDATES_PER_LOCATOR);
+            throw new LedgerRefusedException(LedgerRefusal.TOO_MANY_CANDIDATES,
+                    count + " candidate events exceed the cap of " + MAX_CANDIDATES_PER_LOCATOR);
+        }
+    }
     /** Envelope buckets, in UTF-8 bytes. */
     static final int[] BUCKETS = {1024, 2048, 4096, 8192, 16384, 32768, 65535};
     static final String STATEMENT_DOMAIN = "imani-voucher-ledger-v2";
@@ -448,21 +463,18 @@ public final class VoucherLedgerV2 {
      * with a small relay {@code limit} could see only the junk and miss the real events, so readers
      * must not rely on one.
      *
-     * <p>A valid-MAC flood still costs about one Schnorr verify per event, so at most
-     * {@link #MAX_CANDIDATES_PER_LOCATOR} events are processed, taken in ascending
-     * {@code (created_at, id)} order so every reader processes the same set. Truncation is logged.
+     * <p>A valid-MAC flood still costs about one Schnorr verify per event, so more than
+     * {@link #MAX_CANDIDATES_PER_LOCATOR} events at one locator is refused outright. It is never
+     * truncated: every sort key ({@code created_at}, id, outer key) is attacker-chosen, so any
+     * subset could exclude the genuine REDEEMED or REVOKED event and fail open.
+     *
+     * @throws LedgerRefusedException {@code TOO_MANY_CANDIDATES} when the cap is exceeded
      */
     public static Optional<Resolved> resolve(List<LedgerEvent> events, byte[] ref,
                                              Collection<String> trustedIssuerKeys) {
-        List<LedgerEvent> candidates = new ArrayList<>(events);
-        candidates.sort(Comparator.comparingLong(LedgerEvent::createdAt).thenComparing(LedgerEvent::id));
-        if (candidates.size() > MAX_CANDIDATES_PER_LOCATOR) {
-            LOG.warn("Ledger v2 locator has {} candidate events, processing only the first {} by (created_at, id)",
-                    candidates.size(), MAX_CANDIDATES_PER_LOCATOR);
-            candidates = candidates.subList(0, MAX_CANDIDATES_PER_LOCATOR);
-        }
+        checkCandidateCount(events.size());
         List<Opened> accepted = new ArrayList<>();
-        for (LedgerEvent event : candidates) {
+        for (LedgerEvent event : events) {
             open(event, ref, trustedIssuerKeys).ifPresent(accepted::add);
         }
         if (accepted.isEmpty()) {

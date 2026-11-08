@@ -97,6 +97,22 @@ class NostrVoucherLedgerV2RepositoryTest {
     }
 
     @Test
+    @DisplayName("more candidates than the cap at a locator: resolve and query refuse, before any verify")
+    void floodRefused() {
+        NostrClientAdapter client = mock(NostrClientAdapter.class);
+        List<GenericEvent> flood = java.util.Collections.nCopies(
+                xyz.tcheeric.cashu.voucher.domain.ledger.VoucherLedgerV2.MAX_CANDIDATES_PER_LOCATOR + 1, new GenericEvent());
+        when(client.queryEvents(anyMap(), anyLong())).thenReturn(flood);
+        NostrVoucherLedgerV2Repository repo = new NostrVoucherLedgerV2Repository(client, List.of(PLATFORM));
+        for (Runnable r : List.<Runnable>of(() -> repo.resolve(fields().ref()), () -> repo.query(fields().ref()))) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(r::run)
+                    .isInstanceOfSatisfying(xyz.tcheeric.cashu.voucher.domain.ledger.LedgerRefusedException.class,
+                            e -> assertThat(e.reason())
+                                    .isEqualTo(xyz.tcheeric.cashu.voucher.domain.ledger.LedgerRefusal.TOO_MANY_CANDIDATES));
+        }
+    }
+
+    @Test
     void publishFailureThrows() {
         NostrClientAdapter client = mock(NostrClientAdapter.class);
         when(client.publishEvent(any(), anyLong())).thenReturn(false);

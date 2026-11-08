@@ -35,5 +35,7 @@ public enum LedgerRefusal {
     /** Writer side: a terminal credential is never published. */
     TERMINAL_CREDENTIAL,
     /** Writer side: the envelope does not fit 65535 bytes. */
-    TOO_LARGE
+    TOO_LARGE,
+    /** More events at one locator than a reader will process; the answer is refused, not truncated. */
+    TOO_MANY_CANDIDATES
 }

@@ -443,34 +443,31 @@ class VoucherLedgerV2Test {
     }
 
     @Test
-    void resolveCapsCandidatesPerLocatorInCreatedAtThenIdOrder() {
+    void resolveProcessesEveryCandidateUpToTheCapAndRefusesAbove() {
         VoucherFields f = fields(null);
         LedgerEvent iss = issued(f);
-        LedgerEvent red = VoucherLedgerV2.seal(new LedgerEntry(VoucherStatus.REDEEMED, f, null),
+        LedgerEvent rev = VoucherLedgerV2.seal(new LedgerEntry(VoucherStatus.REVOKED, f, null),
                 Hex.decode(STALL_SK), STALL_ROOT).template();
+        // Valid MAC, refused by the inner signature: the costliest junk an attacker can make.
         LedgerEvent junk = VoucherLedgerV2.seal(new LedgerEntry(VoucherStatus.ISSUED, f, null),
                 Hex.decode(ATTACKER_SK), PLATFORM_ROOT).template();
         int cap = VoucherLedgerV2.MAX_CANDIDATES_PER_LOCATOR;
-        assertThat(cap).isEqualTo(256);
+        assertThat(cap).isEqualTo(4096);
 
-        java.util.List<LedgerEvent> flood = new java.util.ArrayList<>();
-        flood.add(at(iss, 1, "00"));
+        // (a) cap - 2 junk events, all earlier than the genuine ones: every event is processed.
+        java.util.List<LedgerEvent> events = new java.util.ArrayList<>();
         for (int i = 0; i < cap - 2; i++) {
-            flood.add(at(junk, 2, String.format("%04x", i)));
+            events.add(at(junk, 1, String.format("%04x", i)));
         }
-        // Exactly at the cap: the REDEEMED event (latest created_at) is processed.
-        java.util.List<LedgerEvent> atCap = new java.util.ArrayList<>(flood);
-        atCap.add(at(red, 3, "ff"));
-        java.util.Collections.reverse(atCap);
-        assertThat(VoucherLedgerV2.resolve(atCap, f.ref(), List.of(PLATFORM)).orElseThrow().status())
-                .isEqualTo(VoucherStatus.REDEEMED);
+        events.add(at(iss, 100, "aa"));
+        events.add(at(rev, 200, "ff"));
+        assertThat(events).hasSize(cap);
+        var r = VoucherLedgerV2.resolve(events, f.ref(), List.of(PLATFORM)).orElseThrow();
+        assertThat(r.status()).isEqualTo(VoucherStatus.REVOKED);
 
-        // One over: same created_at, a smaller id sorts ahead and pushes REDEEMED (id "ff") out.
-        java.util.List<LedgerEvent> over = new java.util.ArrayList<>(atCap);
-        over.add(at(junk, 3, "00"));
-        java.util.Collections.shuffle(over, new java.util.Random(7));
-        var r = VoucherLedgerV2.resolve(over, f.ref(), List.of(PLATFORM)).orElseThrow();
-        assertThat(r.status()).isEqualTo(VoucherStatus.ISSUED);
-        assertThat(r.accepted()).hasSize(1);
+        // (b) one more: refused outright, never truncated.
+        events.add(0, at(junk, 0, "00"));
+        assertThat(refusal(() -> VoucherLedgerV2.resolve(events, f.ref(), List.of(PLATFORM))))
+                .isEqualTo(LedgerRefusal.TOO_MANY_CANDIDATES);
     }
 }
