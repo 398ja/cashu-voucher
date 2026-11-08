@@ -1,7 +1,5 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -163,12 +161,7 @@ class VoucherByReferenceVectorsTest {
         VoucherSecret plain = sign(base("11111111-2222-4333-8444-555555555555", "00".repeat(32))
                 .faceValue(700L).expiresAt(FAR).memo("7 EUR coupon").build(), ISSUER_KEY);
         List<Map<String, Object>> documents = new ArrayList<>();
-        documents.add(rawDocument("well-formed", proofNonce(97), true, g -> {
-            g.writeStringField("voucherId", plain.getVoucherId().toString());
-            g.writeStringField("issuerId", "corner-cafe");
-            g.writeStringField("unit", "EUR");
-            g.writeNumberField("faceValue", 700);
-        }));
+        documents.add(documentVector("well-formed", proofNonce(97), true, document(plain)));
         documents.add(rawDocument("duplicate-key", proofNonce(96), false, g -> {
             g.writeStringField("voucherId", plain.getVoucherId().toString());
             g.writeStringField("issuerId", "corner-cafe");
@@ -230,7 +223,10 @@ class VoucherByReferenceVectorsTest {
             body.write(g);
             g.writeEndObject();
         }
-        byte[] doc = out.toByteArray();
+        return documentVector(name, nonce, readable, out.toByteArray());
+    }
+
+    private static Map<String, Object> documentVector(String name, String nonce, boolean readable, byte[] doc) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("name", name);
         m.put("document_hex", Hex.toHexString(doc));
@@ -278,22 +274,6 @@ class VoucherByReferenceVectorsTest {
         return m;
     }
 
-    /**
-     * Strict structural read of the token's `v` map: text keys only, no duplicates. cashu-lib's
-     * {@code TokenV4.deserialize} already refuses a {@code __proto__} or non-text key (not hex), but
-     * keeps the last of duplicate keys, so duplicates are checked here (follow-up for cashu-lib).
-     */
-    private static boolean strictDocumentsMap(String token) {
-        byte[] cbor = Base64.getUrlDecoder().decode(token.substring("cashuB".length()));
-        CBORFactory strict = CBORFactory.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build();
-        try (JsonParser p = strict.createParser(cbor)) {
-            JsonNode root = new ObjectMapper(strict).readTree(p);
-            return root.get("v") != null && root.get("v").isObject();
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     @Test
     void replaysTokenDocumentsMaps() throws Exception {
         JsonNode root = JSON.readTree(fileContents());
@@ -308,9 +288,11 @@ class VoucherByReferenceVectorsTest {
             } catch (IllegalArgumentException e) {
                 lib = false;
             }
-            assertThat(lib && strictDocumentsMap(token)).as(name).isEqualTo(accepted);
-            if (!name.equals("duplicate-key")) {
-                assertThat(lib).as(name + " (cashu-lib alone)").isEqualTo(accepted);
+            assertThat(lib).as(name).isEqualTo(accepted);
+            if (!accepted) {
+                // Every refused map, a duplicate key included (review N6), is an invalid token.
+                assertThatThrownBy(() -> TokenV4.deserialize(token)).as(name)
+                        .isInstanceOf(IllegalArgumentException.class);
             }
         }
         assertThatThrownBy(() -> TokenV4.deserialize(root.get("token_documents_maps").get(1).get("token").asText()))
