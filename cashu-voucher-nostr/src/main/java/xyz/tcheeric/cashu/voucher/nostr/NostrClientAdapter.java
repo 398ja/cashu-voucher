@@ -228,60 +228,6 @@ public class NostrClientAdapter {
     }
 
     /**
-     * Queries events from relays matching the given filter.
-     *
-     * <p>This method sends a REQ message to all connected relays and collects
-     * matching events. Duplicate events (same ID) are automatically deduplicated.
-     *
-     * @param subscriptionId the subscription ID for this query
-     * @param timeoutMs timeout for waiting for responses
-     * @return list of matching events (never null, may be empty)
-     * @throws VoucherNostrException if not connected or operation fails
-     */
-    public List<GenericEvent> queryEvents(@NonNull String subscriptionId, long timeoutMs) {
-        ensureConnected();
-
-        log.debug("Querying events: subscriptionId={}", subscriptionId);
-
-        Map<String, GenericEvent> eventMap = new ConcurrentHashMap<>();
-
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-
-        for (Map.Entry<String, RelayConnection> entry : connections.entrySet()) {
-            String relayUrl = entry.getKey();
-            RelayConnection conn = entry.getValue();
-
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                try {
-                    List<GenericEvent> events = conn.query(subscriptionId);
-                    for (GenericEvent event : events) {
-                        eventMap.putIfAbsent(event.getId(), event);
-                    }
-                    log.debug("Received {} event(s) from relay: {}", events.size(), relayUrl);
-                } catch (Exception e) {
-                    log.error("Failed to query relay: {}", relayUrl, e);
-                }
-            });
-
-            futures.add(future);
-        }
-
-        // Wait for all queries
-        try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                    .orTimeout(timeoutMs, TimeUnit.MILLISECONDS)
-                    .join();
-        } catch (Exception e) {
-            log.warn("Some query operations timed out or failed", e);
-        }
-
-        List<GenericEvent> results = new ArrayList<>(eventMap.values());
-        log.debug("Query complete: {} unique event(s) found", results.size());
-
-        return results;
-    }
-
-    /**
      * Runs a NIP-01 query with {@code filter} on every connected relay and returns the union of
      * the events, deduplicated by id.
      *
@@ -442,15 +388,6 @@ public class NostrClientAdapter {
             // TODO: Implement actual EVENT message sending
             log.debug("Simulating publish to: {}", url);
             return true;
-        }
-
-        List<GenericEvent> query(String subscriptionId) {
-            if (!connected) {
-                throw new VoucherNostrException("Relay not connected");
-            }
-            // TODO: Implement actual REQ/EOSE handling
-            log.debug("Simulating query to: {} with subscription: {}", url, subscriptionId);
-            return Collections.emptyList();
         }
 
         void close() {

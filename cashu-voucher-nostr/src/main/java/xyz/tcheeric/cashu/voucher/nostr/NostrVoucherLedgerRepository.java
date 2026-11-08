@@ -11,6 +11,7 @@ import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 import xyz.tcheeric.cashu.voucher.nostr.events.VoucherLedgerEvent;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -186,6 +187,37 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
      * author? Checking only the {@code pubkey} field would be worthless, because the field is
      * just as writable by an attacker as the rest of the event.
      */
+    /** Latest by created_at, ties broken by the larger event id so every reader picks one event. */
+    private static final java.util.Comparator<GenericEvent> LATEST =
+            java.util.Comparator.comparingLong(GenericEvent::getCreatedAt)
+                    .thenComparing(GenericEvent::getId, java.util.Comparator.nullsFirst(String::compareTo));
+
+    /**
+     * The NIP-01 filter for one voucher's v1 ledger events: kind 30078, authored by the issuer,
+     * d = "voucher:&lt;id&gt;". No limit: a reader must see every candidate.
+     */
+    Map<String, List<String>> filterFor(String voucherId) {
+        return Map.of(
+                "kinds", List.of(String.valueOf(VoucherLedgerEvent.KIND_VOUCHER_LEDGER)),
+                "authors", List.of(issuerPublicKey.toString()),
+                "#d", List.of(VoucherLedgerEvent.D_TAG_PREFIX + voucherId));
+    }
+
+    private static VoucherLedgerEvent asLedgerEvent(GenericEvent e) {
+        if (e instanceof VoucherLedgerEvent ledgerEvent) {
+            return ledgerEvent;
+        }
+        VoucherLedgerEvent copy = new VoucherLedgerEvent();
+        copy.setId(e.getId());
+        copy.setPubKey(e.getPubKey());
+        copy.setCreatedAt(e.getCreatedAt());
+        copy.setKind(e.getKind());
+        copy.setTags(e.getTags());
+        copy.setContent(e.getContent());
+        copy.setSignature(e.getSignature());
+        return copy;
+    }
+
     private boolean isFromIssuer(GenericEvent event) {
         if (event == null || event.getPubKey() == null) {
             return false;
@@ -308,17 +340,8 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
         log.debug("Querying voucher status: voucherId={}", voucherId);
 
         try {
-            // Generate subscription ID
-            String subscriptionId = "voucher_status_" + voucherId;
-
-            // TODO: Set up proper filter for NIP-33 query
-            // Filter should include:
-            // - kind: 30078
-            // - authors: [issuerPublicKey]
-            // - #d: ["voucher:{voucherId}"]
-
-            // Query relays
-            List<GenericEvent> events = nostrClient.queryEvents(subscriptionId, queryTimeoutMs);
+            // Fails closed: throws if any relay does not answer completely (EOSE).
+            List<GenericEvent> events = nostrClient.queryEvents(filterFor(voucherId), queryTimeoutMs);
 
             if (events.isEmpty()) {
                 log.debug("Voucher not found in ledger: voucherId={}", voucherId);
@@ -342,20 +365,16 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
 
             // Find most recent event
             GenericEvent mostRecent = authentic.stream()
-                    .max((e1, e2) -> Long.compare(e1.getCreatedAt(), e2.getCreatedAt()))
+                    .max(LATEST)
                     .orElseThrow();
 
             // Convert to VoucherLedgerEvent and extract status
-            if (mostRecent instanceof VoucherLedgerEvent ledgerEvent) {
-                VoucherStatus status = ledgerEvent.getStatus();
-                log.debug("Found voucher status: voucherId={}, status={}", voucherId, status);
-                return Optional.of(status);
-            } else {
-                // Event is not a VoucherLedgerEvent - try to parse it
-                log.warn("Received non-VoucherLedgerEvent, attempting to parse: voucherId={}", voucherId);
-                // TODO: Implement parsing logic
-                return Optional.empty();
-            }
+            // A relay returns plain events. Read them as ledger events; an authentic latest event
+            // that cannot be read is an error, never "not found".
+            VoucherLedgerEvent ledgerEvent = asLedgerEvent(mostRecent);
+            VoucherStatus status = ledgerEvent.getStatus();
+            log.debug("Found voucher status: voucherId={}, status={}", voucherId, status);
+            return Optional.of(status);
 
         } catch (VoucherNostrException e) {
             log.error("Failed to query voucher status: voucherId={}", voucherId, e);
@@ -437,17 +456,8 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
         log.debug("Querying full voucher: voucherId={}", voucherId);
 
         try {
-            // Generate subscription ID
-            String subscriptionId = "voucher_full_" + voucherId;
-
-            // TODO: Set up proper filter for NIP-33 query
-            // Filter should include:
-            // - kind: 30078
-            // - authors: [issuerPublicKey]
-            // - #d: ["voucher:{voucherId}"]
-
-            // Query relays
-            List<GenericEvent> events = nostrClient.queryEvents(subscriptionId, queryTimeoutMs);
+            // Fails closed: throws if any relay does not answer completely (EOSE).
+            List<GenericEvent> events = nostrClient.queryEvents(filterFor(voucherId), queryTimeoutMs);
 
             if (events.isEmpty()) {
                 log.debug("Voucher not found in ledger: voucherId={}", voucherId);
@@ -471,20 +481,16 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
 
             // Find most recent event
             GenericEvent mostRecent = authentic.stream()
-                    .max((e1, e2) -> Long.compare(e1.getCreatedAt(), e2.getCreatedAt()))
+                    .max(LATEST)
                     .orElseThrow();
 
             // Convert to VoucherLedgerEvent and extract voucher
-            if (mostRecent instanceof VoucherLedgerEvent ledgerEvent) {
-                SignedVoucher voucher = ledgerEvent.toVoucher();
-                log.debug("Found voucher in ledger: voucherId={}", voucherId);
-                return Optional.of(voucher);
-            } else {
-                // Event is not a VoucherLedgerEvent - try to parse it
-                log.warn("Received non-VoucherLedgerEvent, attempting to parse: voucherId={}", voucherId);
-                // TODO: Implement parsing logic
-                return Optional.empty();
-            }
+            // A relay returns plain events. Read them as ledger events; an authentic latest event
+            // that cannot be read is an error, never "not found".
+            VoucherLedgerEvent ledgerEvent = asLedgerEvent(mostRecent);
+            SignedVoucher voucher = ledgerEvent.toVoucher();
+            log.debug("Found voucher in ledger: voucherId={}", voucherId);
+            return Optional.of(voucher);
 
         } catch (VoucherNostrException e) {
             log.error("Failed to query voucher: voucherId={}", voucherId, e);
