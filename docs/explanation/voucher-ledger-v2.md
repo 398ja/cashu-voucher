@@ -164,6 +164,12 @@ Anyone who knows `ref` can publish many events at the same `d` under throwaway o
 Each is refused by the inner signature, but each costs the reader a fetch, so readers must not
 rely on a small relay `limit` (a flood could push the genuine events out of the result).
 
+A valid-MAC flood still costs a reader about one Schnorr verify per event, so a reader
+processes at most **256** candidate events per locator (`MAX_CANDIDATES_PER_LOCATOR`). It sorts
+the fetched events by `created_at` ascending, then by event `id` ascending, takes the first 256,
+and logs a warning when that truncates. Every reader therefore folds the same set. Genuine
+vouchers carry a handful of events, far below the cap.
+
 A reader that cannot get a complete answer (no relay connection, an error, a `CLOSED`, or no
 `EOSE` before its timeout) must fail closed: report an error, never "no ledger entry". An
 empty result means every queried relay reached `EOSE` with nothing accepted. Otherwise a

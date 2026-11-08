@@ -42,6 +42,14 @@ public final class VoucherLedgerV2 {
 
     /** Addressable application-data kind (NIP-01). */
     public static final int KIND = 30078;
+
+    /**
+     * Most events {@link #resolve} processes for one locator. A real voucher has a handful
+     * (ISSUED, maybe REDEEMED or REVOKED, a few re-publishes); the cap bounds a flood's cost.
+     */
+    public static final int MAX_CANDIDATES_PER_LOCATOR = 256;
+
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(VoucherLedgerV2.class);
     /** Envelope buckets, in UTF-8 bytes. */
     static final int[] BUCKETS = {1024, 2048, 4096, 8192, 16384, 32768, 65535};
     static final String STATEMENT_DOMAIN = "imani-voucher-ledger-v2";
@@ -439,11 +447,22 @@ public final class VoucherLedgerV2 {
      * throwaway outer keys. Each is refused here by the inner signature, but a reader that fetched
      * with a small relay {@code limit} could see only the junk and miss the real events, so readers
      * must not rely on one.
+     *
+     * <p>A valid-MAC flood still costs about one Schnorr verify per event, so at most
+     * {@link #MAX_CANDIDATES_PER_LOCATOR} events are processed, taken in ascending
+     * {@code (created_at, id)} order so every reader processes the same set. Truncation is logged.
      */
     public static Optional<Resolved> resolve(List<LedgerEvent> events, byte[] ref,
                                              Collection<String> trustedIssuerKeys) {
+        List<LedgerEvent> candidates = new ArrayList<>(events);
+        candidates.sort(Comparator.comparingLong(LedgerEvent::createdAt).thenComparing(LedgerEvent::id));
+        if (candidates.size() > MAX_CANDIDATES_PER_LOCATOR) {
+            LOG.warn("Ledger v2 locator has {} candidate events, processing only the first {} by (created_at, id)",
+                    candidates.size(), MAX_CANDIDATES_PER_LOCATOR);
+            candidates = candidates.subList(0, MAX_CANDIDATES_PER_LOCATOR);
+        }
         List<Opened> accepted = new ArrayList<>();
-        for (LedgerEvent event : events) {
+        for (LedgerEvent event : candidates) {
             open(event, ref, trustedIssuerKeys).ifPresent(accepted::add);
         }
         if (accepted.isEmpty()) {

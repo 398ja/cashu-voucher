@@ -437,4 +437,40 @@ class VoucherLedgerV2Test {
         VoucherFields two = VoucherLedgerV2.resolve(List.of(stallC, stallB), a.ref(), trusted).orElseThrow().voucher();
         assertThat(one).isEqualTo(two);
     }
+
+    static LedgerEvent at(LedgerEvent e, long createdAt, String id) {
+        return new LedgerEvent(e.pubkey(), e.kind(), e.tags(), e.content(), createdAt, id);
+    }
+
+    @Test
+    void resolveCapsCandidatesPerLocatorInCreatedAtThenIdOrder() {
+        VoucherFields f = fields(null);
+        LedgerEvent iss = issued(f);
+        LedgerEvent red = VoucherLedgerV2.seal(new LedgerEntry(VoucherStatus.REDEEMED, f, null),
+                Hex.decode(STALL_SK), STALL_ROOT).template();
+        LedgerEvent junk = VoucherLedgerV2.seal(new LedgerEntry(VoucherStatus.ISSUED, f, null),
+                Hex.decode(ATTACKER_SK), PLATFORM_ROOT).template();
+        int cap = VoucherLedgerV2.MAX_CANDIDATES_PER_LOCATOR;
+        assertThat(cap).isEqualTo(256);
+
+        java.util.List<LedgerEvent> flood = new java.util.ArrayList<>();
+        flood.add(at(iss, 1, "00"));
+        for (int i = 0; i < cap - 2; i++) {
+            flood.add(at(junk, 2, String.format("%04x", i)));
+        }
+        // Exactly at the cap: the REDEEMED event (latest created_at) is processed.
+        java.util.List<LedgerEvent> atCap = new java.util.ArrayList<>(flood);
+        atCap.add(at(red, 3, "ff"));
+        java.util.Collections.reverse(atCap);
+        assertThat(VoucherLedgerV2.resolve(atCap, f.ref(), List.of(PLATFORM)).orElseThrow().status())
+                .isEqualTo(VoucherStatus.REDEEMED);
+
+        // One over: same created_at, a smaller id sorts ahead and pushes REDEEMED (id "ff") out.
+        java.util.List<LedgerEvent> over = new java.util.ArrayList<>(atCap);
+        over.add(at(junk, 3, "00"));
+        java.util.Collections.shuffle(over, new java.util.Random(7));
+        var r = VoucherLedgerV2.resolve(over, f.ref(), List.of(PLATFORM)).orElseThrow();
+        assertThat(r.status()).isEqualTo(VoucherStatus.ISSUED);
+        assertThat(r.accepted()).hasSize(1);
+    }
 }

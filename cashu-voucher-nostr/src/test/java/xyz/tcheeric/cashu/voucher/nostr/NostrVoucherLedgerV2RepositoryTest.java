@@ -58,7 +58,9 @@ class NostrVoucherLedgerV2RepositoryTest {
         assertThat(event.getPubKey().toString()).isEqualTo(template.pubkey()).isNotEqualTo(PLATFORM).isNotEqualTo(STALL);
         assertThat(event.getContent()).isEqualTo(template.content()).doesNotContain(VOUCHER_ID);
         LedgerEvent back = VoucherLedgerV2Event.fromVerifiedEvent(event).orElseThrow();
-        assertThat(back).isEqualTo(template);
+        assertThat(new LedgerEvent(back.pubkey(), back.kind(), back.tags(), back.content())).isEqualTo(template);
+        assertThat(back.createdAt()).isEqualTo(event.getCreatedAt());
+        assertThat(back.id()).isEqualTo(event.getId());
         assertThat(VoucherLedgerV2.open(back, fields().ref(), List.of(PLATFORM))).isPresent();
     }
 

@@ -76,6 +76,7 @@ public final class VoucherLedgerV2Event {
                 tags.add(t);
             }
         }
-        return Optional.of(new LedgerEvent(event.getPubKey().toString(), event.getKind(), tags, event.getContent()));
+        return Optional.of(new LedgerEvent(event.getPubKey().toString(), event.getKind(), tags, event.getContent(),
+                event.getCreatedAt() == null ? 0L : event.getCreatedAt(), event.getId()));
     }
 }

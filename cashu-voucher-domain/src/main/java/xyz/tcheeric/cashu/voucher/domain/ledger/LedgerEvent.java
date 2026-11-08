@@ -12,9 +12,16 @@ import java.util.List;
  * @param tags {@code [["d", d]]} plus an optional {@code ["expiration", E]}
  * @param content the NIP-44 v2 payload
  */
-public record LedgerEvent(String pubkey, int kind, List<List<String>> tags, String content) {
+public record LedgerEvent(String pubkey, int kind, List<List<String>> tags, String content,
+                          long createdAt, String id) {
 
     public LedgerEvent {
         tags = tags == null ? List.of() : tags.stream().map(List::copyOf).toList();
+        id = id == null ? "" : id;
+    }
+
+    /** A template or test event without transport metadata ({@code createdAt} 0, empty id). */
+    public LedgerEvent(String pubkey, int kind, List<List<String>> tags, String content) {
+        this(pubkey, kind, tags, content, 0L, "");
     }
 }
