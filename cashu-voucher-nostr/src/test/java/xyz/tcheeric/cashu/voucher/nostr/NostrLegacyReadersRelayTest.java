@@ -64,11 +64,7 @@ class NostrLegacyReadersRelayTest {
 
     void putLedger(SignedVoucher v, VoucherStatus status, String signerSk, long createdAt) {
         VoucherLedgerEvent e = VoucherLedgerEvent.fromVoucher(v, status);
-        Identity signer = id(signerSk);
-        e.setPubKey(signer.getPublicKey());
-        e.setCreatedAt(createdAt);
-        e.setSignature(signer.sign(e));
-        relay.store(e);
+        relay.store(TestEventSigner.sign(e, signerSk, createdAt));
     }
 
     JsonNode lastReqFilter() {
@@ -132,6 +128,32 @@ class NostrLegacyReadersRelayTest {
         }
 
         @Test
+        @DisplayName("relay caps at N newest: pages past N+1 newer events to the latest anyway")
+        void pagesPastRelayCap() {
+            relay.cap = 5;
+            UUID vid = UUID.randomUUID();
+            SignedVoucher v = voucher(vid);
+            putLedger(v, VoucherStatus.REDEEMED, ISSUER_SK, 1_700_000_000L);
+            for (int i = 0; i < 6; i++) {
+                putLedger(voucher(UUID.randomUUID()), VoucherStatus.ISSUED, ISSUER_SK, 1_700_000_100L + i);
+            }
+            // The fake relay matches #d, so put same-d junk too: forged by another author, newer.
+            for (int i = 0; i < 6; i++) {
+                putLedger(v, VoucherStatus.ISSUED, OTHER_SK, 1_700_000_200L + i);
+            }
+            NostrVoucherLedgerRepository r = new NostrVoucherLedgerRepository(client, id(ISSUER_SK).getPublicKey(), 1000, 5000) {
+                @Override
+                java.util.Map<String, List<String>> filterFor(String voucherId) {
+                    java.util.Map<String, List<String>> m = new java.util.HashMap<>(super.filterFor(voucherId));
+                    m.remove("authors");
+                    return m;
+                }
+            };
+            assertThat(r.queryStatus(vid.toString())).contains(VoucherStatus.REDEEMED);
+            assertThat(relay.reqs.get()).isGreaterThan(1);
+        }
+
+        @Test
         @DisplayName("relay timeout: throws, never answers not found")
         void timeoutThrows() {
             UUID vid = UUID.randomUUID();
@@ -154,10 +176,7 @@ class NostrLegacyReadersRelayTest {
         void putBackup(String authorSk, String recipientSk, SignedVoucher... vouchers) {
             String recipientPub = id(recipientSk).getPublicKey().toString();
             GenericEvent e = VoucherBackupPayload.createBackupEvent(List.of(vouchers), recipientSk, recipientPub);
-            Identity author = id(authorSk);
-            e.setPubKey(author.getPublicKey());
-            e.setSignature(author.sign(e));
-            relay.store(e);
+            relay.store(TestEventSigner.sign(e, authorSk, 1_700_000_000L + relay.stored.size()));
         }
 
         @Test
@@ -192,6 +211,20 @@ class NostrLegacyReadersRelayTest {
             putBackup(OTHER_SK, USER_SK, voucher(UUID.randomUUID()));
             assertThat(repo(2000).restore(USER_SK)).isEmpty();
             assertThat(repo(2000).hasBackups(USER_SK)).isFalse();
+        }
+
+        @Test
+        @DisplayName("relay caps at N newest: restore pages and gets every backup")
+        void pagesPastRelayCap() throws Exception {
+            relay.cap = 2;
+            java.util.Set<UUID> ids = new java.util.HashSet<>();
+            for (int i = 0; i < 5; i++) {
+                UUID vid = UUID.randomUUID();
+                ids.add(vid);
+                putBackup(USER_SK, USER_SK, voucher(vid));
+            }
+            assertThat(repo(5000).restore(USER_SK)).extracting(sv -> sv.getSecret().getVoucherId())
+                    .containsExactlyInAnyOrderElementsOf(ids);
         }
 
         @Test

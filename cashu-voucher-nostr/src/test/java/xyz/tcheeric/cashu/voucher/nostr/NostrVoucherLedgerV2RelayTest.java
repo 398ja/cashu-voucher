@@ -82,6 +82,48 @@ class NostrVoucherLedgerV2RelayTest {
         assertThat(relay.received.stream().anyMatch(m -> "CLOSE".equals(m.get(0).asText()))).isTrue();
     }
 
+    void putAt(VoucherStatus status, VoucherFields f, byte[] signer, long createdAt) {
+        VoucherLedgerV2.Sealed sealed =
+                VoucherLedgerV2.seal(new LedgerEntry(status, f, null), signer, VoucherLedgerRef.ledgerRoot(signer));
+        String sk = Hex.toHexString(sealed.eventSecretKey());
+        // Re-sign with the per-voucher event key at the wanted created_at.
+        relay.store(TestEventSigner.sign(VoucherLedgerV2Event.toSignedEvent(sealed, createdAt), sk, createdAt));
+    }
+
+    @Test
+    @DisplayName("N1: relay caps at N newest; N+1 newer junk events cannot hide a REVOKED")
+    void pagesPastRelayCap() {
+        int n = 20;
+        relay.cap = n;
+        VoucherFields mine = fields(NostrVoucherLedgerV2RepositoryTest.VOUCHER_ID);
+        putAt(VoucherStatus.ISSUED, mine, PLATFORM_SK, 1_700_000_000L);
+        putAt(VoucherStatus.REVOKED, mine, STALL_SK, 1_700_000_001L);
+        for (int i = 0; i < n + 1; i++) {
+            // Newer genuine-looking ISSUED re-publishes: without paging only these are seen.
+            putAt(VoucherStatus.ISSUED, mine, PLATFORM_SK, 1_700_000_100L + i);
+        }
+        var resolved = repo(5000).resolve(mine.ref()).orElseThrow();
+        assertThat(resolved.status()).isEqualTo(VoucherStatus.REVOKED);
+        assertThat(relay.reqs.get()).isGreaterThan(1);
+        for (JsonNode m : relay.received) {
+            if ("REQ".equals(m.get(0).asText())) {
+                assertThat(m.get(2).has("limit")).isFalse();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("N1: a full capped page inside one second cannot be paged past: refused")
+    void sameSecondPageRefused() {
+        relay.cap = NostrClientAdapter.SAME_SECOND_PAGE_LIMIT;
+        VoucherFields mine = fields(NostrVoucherLedgerV2RepositoryTest.VOUCHER_ID);
+        putAt(VoucherStatus.REVOKED, mine, STALL_SK, 1_700_000_000L);
+        for (int i = 0; i < NostrClientAdapter.SAME_SECOND_PAGE_LIMIT + 1; i++) {
+            putAt(VoucherStatus.ISSUED, mine, PLATFORM_SK, 1_700_000_500L);
+        }
+        assertThatThrownBy(() -> repo(5000).resolve(mine.ref())).isInstanceOf(VoucherNostrException.class);
+    }
+
     @Test
     @DisplayName("every relay answered and nothing matched: empty")
     void emptyAfterEose() {

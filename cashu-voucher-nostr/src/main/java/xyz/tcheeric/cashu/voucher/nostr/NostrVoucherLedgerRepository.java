@@ -180,13 +180,6 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
                 issuerPublicKey.toBech32String(), publishTimeoutMs, queryTimeoutMs);
     }
 
-    /**
-     * Whether an event genuinely comes from the issuer this repository trusts.
-     *
-     * <p>Two questions, both required. Is the author the issuer? And is the event signed by that
-     * author? Checking only the {@code pubkey} field would be worthless, because the field is
-     * just as writable by an attacker as the rest of the event.
-     */
     /** Latest by created_at, ties broken by the larger event id so every reader picks one event. */
     private static final java.util.Comparator<GenericEvent> LATEST =
             java.util.Comparator.comparingLong(GenericEvent::getCreatedAt)
@@ -218,6 +211,13 @@ public class NostrVoucherLedgerRepository implements VoucherLedgerPort {
         return copy;
     }
 
+    /**
+     * Whether an event genuinely comes from the issuer this repository trusts.
+     *
+     * <p>Two questions, both required. Is the author the issuer? And is the event signed by that
+     * author? Checking only the {@code pubkey} field would be worthless, because the field is
+     * just as writable by an attacker as the rest of the event.
+     */
     private boolean isFromIssuer(GenericEvent event) {
         if (event == null || event.getPubKey() == null) {
             return false;

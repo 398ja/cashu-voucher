@@ -78,6 +78,13 @@ final class RelayQuery implements WebSocket.Listener {
             if ("limit".equals(e.getKey())) {
                 throw new IllegalArgumentException("limit is not allowed");
             }
+            if ("until".equals(e.getKey()) || "since".equals(e.getKey())) {
+                if (e.getValue().size() != 1) {
+                    throw new IllegalArgumentException(e.getKey() + " takes exactly one value");
+                }
+                f.put(e.getKey(), Long.parseLong(e.getValue().get(0)));
+                continue;
+            }
             ArrayNode values = f.putArray(e.getKey());
             for (String v : e.getValue()) {
                 if ("kinds".equals(e.getKey())) {

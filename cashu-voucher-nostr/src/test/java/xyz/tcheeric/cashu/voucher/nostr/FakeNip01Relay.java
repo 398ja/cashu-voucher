@@ -32,6 +32,9 @@ final class FakeNip01Relay extends WebSocketServer {
     final List<ObjectNode> stored = new CopyOnWriteArrayList<>();
     final List<JsonNode> received = new CopyOnWriteArrayList<>();
     volatile boolean silent;
+    /** When positive, answer each REQ with at most this many matches, newest first (like strfry). */
+    volatile int cap;
+    final java.util.concurrent.atomic.AtomicInteger reqs = new java.util.concurrent.atomic.AtomicInteger();
     private final CountDownLatch started = new CountDownLatch(1);
 
     FakeNip01Relay() {
@@ -86,10 +89,21 @@ final class FakeNip01Relay extends WebSocketServer {
         if (silent) {
             return;
         }
+        reqs.incrementAndGet();
+        List<ObjectNode> hits = new ArrayList<>();
         for (ObjectNode e : stored) {
             if (filters.stream().anyMatch(f -> matches(f, e))) {
-                conn.send(JSON.createArrayNode().add("EVENT").add(sub).add(e).toString());
+                hits.add(e);
             }
+        }
+        if (cap > 0) {
+            hits.sort((a, b) -> Long.compare(b.get("created_at").asLong(), a.get("created_at").asLong()));
+            if (hits.size() > cap) {
+                hits = hits.subList(0, cap);
+            }
+        }
+        for (ObjectNode e : hits) {
+            conn.send(JSON.createArrayNode().add("EVENT").add(sub).add(e).toString());
         }
         conn.send(JSON.createArrayNode().add("EOSE").add(sub).toString());
     }
@@ -104,6 +118,8 @@ final class FakeNip01Relay extends WebSocketServer {
                 case "ids" -> values.contains(e.get("id").asText());
                 case "authors" -> values.contains(e.get("pubkey").asText());
                 case "kinds" -> values.contains(e.get("kind").asText());
+                case "until" -> e.get("created_at").asLong() <= f.getValue().asLong();
+                case "since" -> e.get("created_at").asLong() >= f.getValue().asLong();
                 default -> {
                     if (!key.startsWith("#")) {
                         yield true;

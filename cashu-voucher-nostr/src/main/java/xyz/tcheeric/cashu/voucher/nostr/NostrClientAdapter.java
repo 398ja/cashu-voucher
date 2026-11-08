@@ -236,6 +236,9 @@ public class NostrClientAdapter {
      * under {@code kinds} are sent as JSON integers, all others as strings. A {@code limit} is
      * refused: readers of the voucher ledger must see every event at a locator.
      *
+     * <p>Relays may cap a no-limit REQ server-side and still send EOSE, so each relay is paged
+     * with an inclusive {@code until} (see {@link #pagedQuery}); {@code until} may not be passed in.
+     *
      * <p>Fails closed: if any relay cannot be reached, answers {@code CLOSED}, errors, or does not
      * reach {@code EOSE} before {@code timeoutMs}, this throws instead of returning a partial or
      * empty answer, so "no events" always means every relay said so.
@@ -247,33 +250,113 @@ public class NostrClientAdapter {
      */
     public List<GenericEvent> queryEvents(@NonNull Map<String, List<String>> filter, long timeoutMs) {
         ensureConnected();
-        if (filter.containsKey("limit")) {
-            throw new IllegalArgumentException("limit is not allowed");
+        if (filter.containsKey("limit") || filter.containsKey("until")) {
+            throw new IllegalArgumentException("limit and until are not allowed");
         }
-        String subscriptionId = generateSubscriptionId();
-        Map<String, GenericEvent> eventMap = new ConcurrentHashMap<>();
-        Map<String, CompletableFuture<List<GenericEvent>>> futures = new LinkedHashMap<>();
+        Map<String, CompletableFuture<Collection<GenericEvent>>> futures = new LinkedHashMap<>();
         for (String relayUrl : connections.keySet()) {
-            futures.put(relayUrl, RelayQuery.run(relayUrl, subscriptionId, filter, timeoutMs));
+            futures.put(relayUrl, CompletableFuture.supplyAsync(() -> pagedQuery(relayUrl, filter, timeoutMs)));
         }
-        for (Map.Entry<String, CompletableFuture<List<GenericEvent>>> entry : futures.entrySet()) {
-            List<GenericEvent> events;
+        Map<String, GenericEvent> eventMap = new LinkedHashMap<>();
+        for (Map.Entry<String, CompletableFuture<Collection<GenericEvent>>> entry : futures.entrySet()) {
+            Collection<GenericEvent> events;
             try {
-                events = entry.getValue().get(timeoutMs, TimeUnit.MILLISECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                events = entry.getValue().join();
+            } catch (java.util.concurrent.CompletionException e) {
                 futures.values().forEach(f -> f.cancel(true));
-                throw new VoucherNostrException("Relay query interrupted", e);
-            } catch (Exception e) {
-                futures.values().forEach(f -> f.cancel(true));
-                throw new VoucherNostrException("Relay did not answer the query completely: " + entry.getKey(),
-                        e instanceof java.util.concurrent.ExecutionException && e.getCause() != null ? e.getCause() : e);
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                if (cause instanceof VoucherNostrException v) {
+                    throw v;
+                }
+                throw new VoucherNostrException("Relay did not answer the query completely: " + entry.getKey(), cause);
             }
             for (GenericEvent event : events) {
                 eventMap.putIfAbsent(event.getId(), event);
             }
+            requireAtMostMax(eventMap.size());
         }
         return new ArrayList<>(eventMap.values());
+    }
+
+    /**
+     * Most events one query may return. Matches the ledger's per-locator cap: above it the
+     * answer is refused, never truncated.
+     */
+    public static final int MAX_QUERY_EVENTS = 4096;
+
+    /**
+     * A page whose events all share one {@code created_at} and number at least this many may
+     * have been cut by the relay inside that second, which no {@code until} can page past, so
+     * the query is refused. Legitimate ledger and backup data never has this many in a second.
+     */
+    static final int SAME_SECOND_PAGE_LIMIT = 50;
+
+    /**
+     * Pages one relay past its server-side limit. Relays such as strfry cap a REQ without
+     * {@code limit} (500 by default) and return the newest first, then EOSE as if complete. So
+     * each page re-queries with {@code until = min(created_at)} of the previous one (inclusive),
+     * deduplicating by id, until a page brings nothing new. Fails closed when a page could hide
+     * events inside one second, when the union exceeds {@link #MAX_QUERY_EVENTS}, or when the
+     * page count exceeds {@code MAX_QUERY_EVENTS / firstPageSize + 2}.
+     */
+    private static Collection<GenericEvent> pagedQuery(String relayUrl, Map<String, List<String>> filter,
+                                                       long timeoutMs) {
+        Map<String, GenericEvent> seen = new LinkedHashMap<>();
+        Map<String, List<String>> pageFilter = new LinkedHashMap<>(filter);
+        int maxPages = Integer.MAX_VALUE;
+        for (int page = 0; ; page++) {
+            if (page >= maxPages) {
+                throw new VoucherNostrException("Relay " + relayUrl + " needed more than " + maxPages
+                        + " pages: refusing the answer");
+            }
+            List<GenericEvent> events = runPage(relayUrl, pageFilter, timeoutMs);
+            if (page == 0) {
+                maxPages = MAX_QUERY_EVENTS / Math.max(1, events.size()) + 2;
+            }
+            int added = 0;
+            long min = Long.MAX_VALUE;
+            long max = Long.MIN_VALUE;
+            for (GenericEvent e : events) {
+                long t = e.getCreatedAt() == null ? 0L : e.getCreatedAt();
+                min = Math.min(min, t);
+                max = Math.max(max, t);
+                if (seen.putIfAbsent(e.getId(), e) == null) {
+                    added++;
+                }
+            }
+            requireAtMostMax(seen.size());
+            if (added == 0) {
+                return seen.values();
+            }
+            if (min == max && events.size() >= SAME_SECOND_PAGE_LIMIT) {
+                throw new VoucherNostrException("Relay " + relayUrl + " returned " + events.size()
+                        + " events in one second: the answer may be truncated, refusing it");
+            }
+            pageFilter.put("until", List.of(Long.toString(min)));
+        }
+    }
+
+    private static List<GenericEvent> runPage(String relayUrl, Map<String, List<String>> filter, long timeoutMs) {
+        CompletableFuture<List<GenericEvent>> f =
+                RelayQuery.run(relayUrl, generateSubscriptionId(), filter, timeoutMs);
+        try {
+            return f.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            f.cancel(true);
+            throw new VoucherNostrException("Relay query interrupted", e);
+        } catch (Exception e) {
+            f.cancel(true);
+            throw new VoucherNostrException("Relay did not answer the query completely: " + relayUrl,
+                    e instanceof java.util.concurrent.ExecutionException && e.getCause() != null ? e.getCause() : e);
+        }
+    }
+
+    private static void requireAtMostMax(int count) {
+        if (count > MAX_QUERY_EVENTS) {
+            throw new VoucherNostrException("Query matched more than " + MAX_QUERY_EVENTS
+                    + " events: refusing the answer");
+        }
     }
 
     /**
@@ -356,7 +439,7 @@ public class NostrClientAdapter {
      *
      * @return random subscription ID
      */
-    private String generateSubscriptionId() {
+    private static String generateSubscriptionId() {
         return "sub_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 
