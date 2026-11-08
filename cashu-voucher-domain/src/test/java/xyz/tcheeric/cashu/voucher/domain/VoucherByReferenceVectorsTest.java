@@ -13,6 +13,7 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import xyz.tcheeric.cashu.common.TokenV4;
 import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
+import xyz.tcheeric.cashu.voucher.domain.util.VoucherSerializationUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -155,6 +156,35 @@ class VoucherByReferenceVectorsTest {
             g.writeBinary(good);
         }));
         root.put("token_documents_maps", maps);
+
+        // Malformed voucher documents themselves (review N7): the CBOR blob a proof carries, or
+        // a by-reference key resolves to. Java and TS must both refuse a repeated key or a
+        // non-text key inside the document, never read it last-wins or stringify the key.
+        VoucherSecret plain = sign(base("11111111-2222-4333-8444-555555555555", "00".repeat(32))
+                .faceValue(700L).expiresAt(FAR).memo("7 EUR coupon").build(), ISSUER_KEY);
+        List<Map<String, Object>> documents = new ArrayList<>();
+        documents.add(rawDocument("well-formed", proofNonce(97), true, g -> {
+            g.writeStringField("voucherId", plain.getVoucherId().toString());
+            g.writeStringField("issuerId", "corner-cafe");
+            g.writeStringField("unit", "EUR");
+            g.writeNumberField("faceValue", 700);
+        }));
+        documents.add(rawDocument("duplicate-key", proofNonce(96), false, g -> {
+            g.writeStringField("voucherId", plain.getVoucherId().toString());
+            g.writeStringField("issuerId", "corner-cafe");
+            g.writeStringField("unit", "EUR");
+            g.writeNumberField("faceValue", 700);
+            g.writeNumberField("faceValue", 70_000);
+        }));
+        documents.add(rawDocument("non-text-key", proofNonce(95), false, g -> {
+            g.writeStringField("voucherId", plain.getVoucherId().toString());
+            g.writeStringField("issuerId", "corner-cafe");
+            g.writeStringField("unit", "EUR");
+            g.writeNumberField("faceValue", 700);
+            g.writeFieldId(7);
+            g.writeString("x");
+        }));
+        root.put("documents_cbor", documents);
         return root;
     }
 
@@ -189,6 +219,26 @@ class VoucherByReferenceVectorsTest {
 
     private interface MapBody {
         void write(CBORGenerator g) throws Exception;
+    }
+
+    /** A voucher document whose top-level map is written raw by {@code body}, as v1 and v2 secrets. */
+    private static Map<String, Object> rawDocument(String name, String nonce, boolean readable, MapBody body)
+            throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (CBORGenerator g = new CBORFactory().createGenerator(out)) {
+            g.writeStartObject();
+            body.write(g);
+            g.writeEndObject();
+        }
+        byte[] doc = out.toByteArray();
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("name", name);
+        m.put("document_hex", Hex.toHexString(doc));
+        m.put("document_key", VoucherDocuments.key(doc));
+        m.put("v1_secret", v1(nonce, doc));
+        m.put("v2_secret", v2(nonce, doc));
+        m.put("readable", readable);
+        return m;
     }
 
     /** A one-proof cashuB token whose `v` map is written raw by {@code body}. */
@@ -279,6 +329,31 @@ class VoucherByReferenceVectorsTest {
         try (InputStream in = VoucherByReferenceVectorsTest.class.getResourceAsStream(RESOURCE)) {
             assertThat(in).as("vector file on classpath").isNotNull();
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    @Test
+    void replaysDocumentsCbor() throws Exception {
+        JsonNode root = JSON.readTree(fileContents());
+        assertThat(root.get("documents_cbor")).hasSizeGreaterThanOrEqualTo(3);
+        for (JsonNode c : root.get("documents_cbor")) {
+            String name = c.get("name").asText();
+            byte[] doc = Hex.decode(c.get("document_hex").asText());
+            Map<String, byte[]> documents = docs(doc);
+            WellKnownSecret v1 = parse(c.get("v1_secret").asText());
+            WellKnownSecret v2 = parse(c.get("v2_secret").asText());
+            if (c.get("readable").asBoolean()) {
+                assertThat(VoucherSerializationUtils.fromCbor(doc)).as(name).isNotEmpty();
+                assertThat(UnlockedVoucherBlob.read(v1)).as(name).isNotNull();
+                assertThat(UnlockedVoucherBlob.read(v2, documents)).as(name).isNotNull();
+            } else {
+                assertThatThrownBy(() -> VoucherSerializationUtils.fromCbor(doc)).as(name)
+                        .isInstanceOf(IllegalArgumentException.class);
+                assertThat(UnlockedVoucherBlob.read(v1)).as(name).isNull();
+                assertThat(UnlockedVoucherBlob.read(v2, documents)).as(name).isNull();
+                assertThat(VoucherValidator.validateProofSecret(v2, documents).isValid()).as(name).isFalse();
+                assertThat(VoucherFingerprint.compute(v2, documents)).as(name).isNull();
+            }
         }
     }
 

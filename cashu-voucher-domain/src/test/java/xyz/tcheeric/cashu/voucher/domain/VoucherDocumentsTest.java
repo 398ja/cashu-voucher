@@ -1,6 +1,7 @@
 package xyz.tcheeric.cashu.voucher.domain;
 
 import org.bouncycastle.util.encoders.Hex;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
@@ -13,6 +14,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.UnaryOperator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static xyz.tcheeric.cashu.voucher.domain.ByReferenceFixtures.docs;
@@ -26,6 +29,22 @@ import static xyz.tcheeric.cashu.voucher.domain.ByReferenceFixtures.v2;
  * closed in every legacy reader.
  */
 class VoucherDocumentsTest {
+
+    /** Counts document hashes through the package-private digest hook (review N10). */
+    private static AtomicLong countHashes() {
+        AtomicLong n = new AtomicLong();
+        UnaryOperator<byte[]> real = VoucherDocuments.digestHook;
+        VoucherDocuments.digestHook = in -> {
+            n.incrementAndGet();
+            return real.apply(in);
+        };
+        return n;
+    }
+
+    @AfterEach
+    void restoreDigest() {
+        VoucherDocuments.resetDigestHook();
+    }
 
     private static WellKnownSecret captured() throws Exception {
         try (InputStream in = VoucherDocumentsTest.class.getResourceAsStream("/captured-unlocked-voucher-secret.json")) {
@@ -161,7 +180,7 @@ class VoucherDocumentsTest {
         for (int i = 0; i < 1000; i++) {
             refs.add(parse(v2(String.format("%064x", i), i % 2 == 0 ? doc : other)));
         }
-        long before = VoucherDocuments.HASHES.get();
+        AtomicLong hashes = countHashes();
         VoucherDocuments.Validated validated = VoucherDocuments.validated(map, 1000);
         assertThat(validated.errors()).isEmpty();
         for (int i = 0; i < 1000; i++) {
@@ -170,7 +189,7 @@ class VoucherDocumentsTest {
             assertThat(((VoucherDocuments.Resolution.Resolved) r).secret().getNonce())
                     .isEqualTo(String.format("%064x", i));
         }
-        assertThat(VoucherDocuments.HASHES.get() - before).isEqualTo(2);
+        assertThat(hashes.get()).isEqualTo(2);
     }
 
     @Test
@@ -201,9 +220,9 @@ class VoucherDocumentsTest {
     void readProofSecretHashesOnce() throws Exception {
         WellKnownSecret ref = v2Of(captured());
         Map<String, byte[]> map = docs(captured().getData());
-        long before = VoucherDocuments.HASHES.get();
+        AtomicLong hashes = countHashes();
         assertThat(VoucherValidator.readProofSecret(ref, map, new java.util.ArrayList<>())).isPresent();
-        assertThat(VoucherDocuments.HASHES.get() - before).isEqualTo(1);
+        assertThat(hashes.get()).isEqualTo(1);
     }
 
     @Test

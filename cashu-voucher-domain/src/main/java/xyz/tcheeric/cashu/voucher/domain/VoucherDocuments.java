@@ -12,7 +12,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 
 /**
@@ -44,8 +44,13 @@ public final class VoucherDocuments {
     private static final Pattern KEY = Pattern.compile("^[0-9a-f]{64}$");
     private static final HexFormat HEX = HexFormat.of();
 
-    /** Test seam: number of document hashes computed (cashu-voucher#64, review M2). */
-    static final AtomicLong HASHES = new AtomicLong();
+    private static final UnaryOperator<byte[]> SHA256 = VoucherDocuments::digest;
+
+    /**
+     * The digest every document hash goes through. Package-private and replaced only by tests
+     * (to count hashes, cashu-voucher#64 review M2/N10); production never reassigns it.
+     */
+    static volatile UnaryOperator<byte[]> digestHook = SHA256;
 
     private VoucherDocuments() {
     }
@@ -233,7 +238,15 @@ public final class VoucherDocuments {
     }
 
     private static byte[] sha256(byte[] input) {
-        HASHES.incrementAndGet();
+        return digestHook.apply(input);
+    }
+
+    /** Restores the production digest (tests only). */
+    static void resetDigestHook() {
+        digestHook = SHA256;
+    }
+
+    private static byte[] digest(byte[] input) {
         try {
             return MessageDigest.getInstance("SHA-256").digest(input);
         } catch (NoSuchAlgorithmException e) {
