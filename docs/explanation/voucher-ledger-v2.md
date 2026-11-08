@@ -162,6 +162,29 @@ Republishing is idempotent: same address, same plaintext.
 trusted-key signers. The event's outer author (`sk_v`) is never trusted for anything: it
 only makes the address replaceable by its publisher.
 
+## Clarifications pinned by the vectors
+
+These follow from the rules above. They are written out because two implementations could
+otherwise read them differently.
+
+- `voucherId` is accepted only in the 8-4-4-4-12 hex layout, either case. Forms Java's
+  `UUID.fromString` would also accept (no hyphens, short groups, braces) are refused.
+- A reader refuses a body whose `voucher.voucherId` or `voucher.issuerId` is not already in its
+  normalised (lowercase) form. Bodies are written that way, so this only affects forgeries.
+- Readers refuse a JSON value of the wrong type (`faceValue` as a string, a fractional or
+  out-of-int64 number, `doc` not a string) and refuse trailing data after the JSON object.
+- A `signer` or `sig` that is not lowercase hex of the exact length, or a `pad` containing
+  anything but `0`, makes the envelope malformed.
+- `doc` is verified as an unlocked-voucher CBOR blob: it must decode, name the same `voucherId`
+  and `issuerId`, and its issuer signature must verify. Anything else drops `doc` only.
+- Locked (P2PK) vouchers carry no `doc` and no `issuanceWarrant`.
+- When several accepted `ISSUED` events exist, voucher fields come from the first one that
+  carries a verified `doc`, else the first `ISSUED` event.
+- The reason names in the vector file (`UNAUTHORISED_SIGNER`, `SEQ_MISMATCH`, ...) are the
+  first check that fails, in this order: address, decrypt, envelope shape (duplicate and unknown
+  keys included), inner signature, body shape, version, ref, status, seq, signer. A TypeScript
+  reader needs only to refuse the same events; matching the reason is recommended.
+
 ## Known limit of content-derived encryption
 
 Anyone who can guess the whole input of `ref` can confirm the guess. `ref` covers the

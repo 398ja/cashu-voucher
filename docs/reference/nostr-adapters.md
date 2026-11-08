@@ -249,9 +249,37 @@ public List<String> getConnectedRelays()
 
 ---
 
-## VoucherLedgerEvent
+## NostrVoucherLedgerV2Repository (ledger v2)
 
-Helper class for NIP-33 voucher events.
+Encrypted, pseudonymous voucher ledger ([voucher-ledger-v2.md](../explanation/voucher-ledger-v2.md)).
+Does not implement `VoucherLedgerPort`; v1 stays the default until callers switch.
+
+```java
+public NostrVoucherLedgerV2Repository(NostrClientAdapter client, Collection<String> trustedIssuerKeys)
+public NostrVoucherLedgerV2Repository(NostrClientAdapter client, Collection<String> trustedIssuerKeys,
+                                      long publishTimeoutMs, long queryTimeoutMs)
+public GenericEvent publish(LedgerEntry entry, byte[] signerSecretKey, byte[] publisherSecretKey)
+public List<VoucherLedgerV2.Opened> query(byte[] ref)
+public Optional<VoucherLedgerV2.Resolved> resolve(byte[] ref)
+public static Map<String, List<String>> filterFor(byte[] ref)   // {"kinds":[30078],"#d":[d]}
+```
+
+- `signerSecretKey`: the platform key for `ISSUED`, the stall key for `REDEEMED`/`REVOKED`.
+- `publisherSecretKey`: the publisher's own key; the per-voucher event key is derived from its
+  ledger root and is never the publisher's key.
+- Reading drops events whose NIP-01 id/sig fail, then applies every check of the spec.
+
+## VoucherLedgerV2Event
+
+`toSignedEvent(VoucherLedgerV2.Sealed, long createdAt)` signs a domain template under its
+per-voucher key; `fromVerifiedEvent(GenericEvent)` returns the domain `LedgerEvent` only when the
+outer NIP-01 id and signature verify.
+
+---
+
+## VoucherLedgerEvent (v1, superseded)
+
+Helper class for NIP-33 voucher events. Superseded by ledger v2; unchanged.
 
 **Package:** `xyz.tcheeric.cashu.voucher.nostr.events`
 

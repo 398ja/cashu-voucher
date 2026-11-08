@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Voucher ledger v2** (imani-gateway-customer#310, step 2), wire contract in
+  `docs/explanation/voucher-ledger-v2.md`. Encrypted (NIP-44 v2), per-voucher-key, unlinkable
+  ledger events. Domain package `xyz.tcheeric.cashu.voucher.domain.ledger`: `VoucherLedgerRef`
+  (ref, key, locator, event key, ledger root), `Nip44V2` (BouncyCastle low-level primitives, no
+  JCA provider needed, passes the official paulmillr/nip44 vectors), `VoucherLedgerV2`
+  (`seal`, `read`/`open`, `resolve`, `isTerminalCredential`, entry builders for unlocked and
+  P2PK-locked vouchers), `LedgerEntry`, `VoucherFields`, `LedgerEvent`, `LedgerRefusal`.
+- Nostr adapter: `VoucherLedgerV2Event` (NIP-01 signing under the per-voucher key, outer
+  id/sig verification on read) and `NostrVoucherLedgerV2Repository`.
+- Golden vectors `cashu-voucher-domain/src/test/resources/voucher-ledger-v2-vectors.json` for
+  the TypeScript implementation; regenerate with `-Dcv.writeLedgerV2Vectors=<path>`.
+
+### Changed
+- `VoucherLedgerEvent` (v1) Javadoc marks it superseded by v2. No behaviour change; v1 stays the
+  default, and a new test pins its content and tags.
+- Version 0.18.0-SNAPSHOT.
+
 ## [0.17.1] - 2026-10-22
 
 > **Release gate (owner decision D10, cashu-mint#540):** released after owner approval with the

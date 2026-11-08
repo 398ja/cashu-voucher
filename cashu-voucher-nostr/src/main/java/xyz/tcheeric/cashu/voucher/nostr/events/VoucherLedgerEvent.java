@@ -19,6 +19,11 @@ import java.util.List;
 /**
  * Nostr event for voucher ledger records (NIP-33 parameterized replaceable).
  *
+ * <p><strong>Superseded by voucher ledger v2</strong> ({@link VoucherLedgerV2Event},
+ * {@code docs/explanation/voucher-ledger-v2.md}), which encrypts the record and publishes it under
+ * a per-voucher key at an unlinkable address. This v1 form publishes the voucher in plaintext and
+ * stays the default, unchanged, until callers switch (imani-gateway-customer#310).
+ *
  * <p>This class extends {@link GenericEvent} to provide type-safe voucher ledger
  * events. It uses NIP-33 parameterized replaceable events (kind 30078) to ensure
  * each voucher has a unique, updatable record on the ledger.
