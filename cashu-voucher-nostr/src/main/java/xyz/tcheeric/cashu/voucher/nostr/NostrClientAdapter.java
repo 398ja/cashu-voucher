@@ -173,9 +173,10 @@ public class NostrClientAdapter {
     /**
      * Publishes an event to all connected relays.
      *
-     * <p>This method publishes the event to all relays in parallel and waits for
-     * confirmations. The operation is considered successful if at least one relay
-     * confirms receipt.
+     * <p>Sends {@code ["EVENT", event]} to every connected relay in parallel and waits for each
+     * relay's {@code OK}. A relay counts as successful only on {@code ["OK", id, true]};
+     * {@code OK=false}, a connection error, a close or no OK before {@code timeoutMs} counts as
+     * a failure. The event must already carry its id and signature.
      *
      * @param event the event to publish (must not be null)
      * @param timeoutMs timeout for waiting for confirmations
@@ -187,38 +188,27 @@ public class NostrClientAdapter {
 
         log.debug("Publishing event: id={}, kind={}", event.getId(), event.getKind());
 
-        List<CompletableFuture<Boolean>> futures = new ArrayList<>();
+        Map<String, CompletableFuture<Boolean>> futures = new LinkedHashMap<>();
+        for (String relayUrl : connections.keySet()) {
+            futures.put(relayUrl, RelayPublish.run(relayUrl, event, timeoutMs));
+        }
 
-        for (Map.Entry<String, RelayConnection> entry : connections.entrySet()) {
-            String relayUrl = entry.getKey();
-            RelayConnection conn = entry.getValue();
-
-            CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(() -> {
-                try {
-                    return conn.publish(event);
-                } catch (Exception e) {
-                    log.error("Failed to publish to relay: {}", relayUrl, e);
-                    return false;
+        // A relay counts only on ["OK", id, true]. OK=false, an error, a close or a timeout is a failure.
+        long successCount = 0;
+        for (Map.Entry<String, CompletableFuture<Boolean>> entry : futures.entrySet()) {
+            try {
+                if (Boolean.TRUE.equals(entry.getValue().get(timeoutMs, TimeUnit.MILLISECONDS))) {
+                    successCount++;
                 }
-            });
-
-            futures.add(future);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                futures.values().forEach(f -> f.cancel(true));
+                throw new VoucherNostrException("Publish interrupted", e);
+            } catch (Exception e) {
+                entry.getValue().cancel(true);
+                log.warn("Publish to relay {} failed: {}", entry.getKey(), e.getMessage());
+            }
         }
-
-        // Wait for all publish attempts
-        try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                    .orTimeout(timeoutMs, TimeUnit.MILLISECONDS)
-                    .join();
-        } catch (Exception e) {
-            log.warn("Some publish operations timed out or failed", e);
-        }
-
-        // Check if at least one succeeded
-        long successCount = futures.stream()
-                .map(f -> f.getNow(false))
-                .filter(Boolean::booleanValue)
-                .count();
 
         boolean success = successCount > 0;
         log.debug("Event published: id={}, success={}/{} relays",
@@ -462,15 +452,6 @@ public class NostrClientAdapter {
             // For now, simulate connection
             log.debug("Simulating connection to: {}", url);
             connected = true;
-        }
-
-        boolean publish(GenericEvent event) {
-            if (!connected) {
-                throw new VoucherNostrException("Relay not connected");
-            }
-            // TODO: Implement actual EVENT message sending
-            log.debug("Simulating publish to: {}", url);
-            return true;
         }
 
         void close() {

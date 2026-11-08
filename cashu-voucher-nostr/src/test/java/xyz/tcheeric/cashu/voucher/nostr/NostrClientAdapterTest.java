@@ -89,7 +89,7 @@ class NostrClientAdapterTest {
     }
 
     @Test
-    @DisplayName("Should publish event when connected")
+    @DisplayName("Publish with no OK from any relay is a failure, never simulated success")
     void testPublishEvent() {
         adapter.connect();
 
@@ -97,9 +97,8 @@ class NostrClientAdapterTest {
         event.setKind(1);
         event.setContent("Test note");
 
-        boolean result = adapter.publishEvent(event, 1000L);
-        // Current implementation simulates success
-        assertTrue(result);
+        // Unsigned, and nothing listens at the test URLs: no relay says OK=true.
+        assertFalse(adapter.publishEvent(event, 1000L));
     }
 
     @Test

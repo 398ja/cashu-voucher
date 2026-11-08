@@ -32,6 +32,8 @@ final class FakeNip01Relay extends WebSocketServer {
     final List<ObjectNode> stored = new CopyOnWriteArrayList<>();
     final List<JsonNode> received = new CopyOnWriteArrayList<>();
     volatile boolean silent;
+    /** Answer every EVENT with ["OK", id, false, ...]. */
+    volatile boolean rejectEvents;
     /** When positive, answer each REQ with at most this many matches, newest first (like strfry). */
     volatile int cap;
     final java.util.concurrent.atomic.AtomicInteger reqs = new java.util.concurrent.atomic.AtomicInteger();
@@ -78,6 +80,20 @@ final class FakeNip01Relay extends WebSocketServer {
             return;
         }
         received.add(msg);
+        if ("EVENT".equals(msg.get(0).asText()) && msg.size() >= 2) {
+            JsonNode ev = msg.get(1);
+            if (silent) {
+                return;
+            }
+            if (rejectEvents) {
+                conn.send(JSON.createArrayNode().add("OK").add(ev.get("id").asText()).add(false)
+                        .add("blocked: test").toString());
+                return;
+            }
+            stored.add((ObjectNode) ev.deepCopy());
+            conn.send(JSON.createArrayNode().add("OK").add(ev.get("id").asText()).add(true).add("").toString());
+            return;
+        }
         if (!"REQ".equals(msg.get(0).asText())) {
             return;
         }
