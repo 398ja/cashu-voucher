@@ -83,21 +83,23 @@
                  sign() time. No published imani-bom carries 0.30.7 yet, and the BOM release
                  that will carry it also pins this release, so it cannot come first. A
                  project's own dependencyManagement wins over an imported BOM. Remove these
-                 three entries when imani-bom.version moves to a BOM with cashu-lib >= 0.30.7. -->
+                 three entries when imani-bom.version moves to a BOM with cashu-lib >= 0.31.0.
+                 0.31.0-SNAPSHOT (cashu-lib feat/64-token-voucher-documents) carries token voucher
+                 documents and refuses a duplicate key as IllegalArgumentException (#64, N6). -->
             <dependency>
                 <groupId>xyz.tcheeric</groupId>
                 <artifactId>cashu-lib-common</artifactId>
-                <version>0.30.7</version>
+                <version>0.31.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>xyz.tcheeric</groupId>
                 <artifactId>cashu-lib-entities</artifactId>
-                <version>0.30.7</version>
+                <version>0.31.0-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>xyz.tcheeric</groupId>
                 <artifactId>cashu-lib-crypto</artifactId>
-                <version>0.30.7</version>
+                <version>0.31.0-SNAPSHOT</version>
             </dependency>
 
             <dependency>

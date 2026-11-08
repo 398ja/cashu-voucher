@@ -66,6 +66,21 @@ if (result.isValid()) {
 }
 ```
 
+A proof secret overload accepts an unlocked proof inline (v1) or by reference (v2,
+cashu-voucher#64). A by-reference proof whose document is missing or does not match fails.
+
+```java
+public VerificationResult verifyOffline(
+    @NonNull WellKnownSecret proofSecret,
+    Map<String, byte[]> documents,
+    @NonNull String expectedIssuerId
+)
+```
+
+`validatePaymentPayload(payload, request, documents)` adds to the two-argument form: the
+document map must pass `VoucherDocuments.validate` (at most one entry per proof), and every
+by-reference proof's document must be present and match.
+
 ---
 
 ### verifyOnline

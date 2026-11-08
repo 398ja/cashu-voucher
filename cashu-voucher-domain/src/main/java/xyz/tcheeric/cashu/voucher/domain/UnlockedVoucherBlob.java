@@ -64,6 +64,11 @@ public final class UnlockedVoucherBlob {
         if (data == null || data.length == 0) {
             return null;
         }
+        if (VoucherDocuments.isByReference(secret)) {
+            // 32 bytes of SHA-256 are a reference, not a blob (cashu-voucher#64). A caller
+            // that does not pass the documents must fail closed here, never decode a hash.
+            return null;
+        }
 
         try {
             // `data` is ALREADY the CBOR bytes. The secret carries it as hex on the wire
@@ -77,6 +82,24 @@ public final class UnlockedVoucherBlob {
             logger.debug("unlocked voucher blob could not be read: {}", unreadable.getMessage());
             return null;
         }
+    }
+
+    /**
+     * The voucher described by an unlocked voucher secret, inline or by reference.
+     *
+     * <p>A by-reference secret is first resolved against {@code documents}
+     * ({@link VoucherDocuments#resolve}); a missing or mismatched document reads as
+     * {@code null}. An inline secret reads exactly as {@link #read(WellKnownSecret)}.
+     *
+     * @param secret a secret of kind {@code VOUCHER}
+     * @param documents documents keyed by {@code hex(SHA256(document))}, may be null
+     * @return the voucher, or null
+     */
+    public static VoucherSecret read(@NonNull WellKnownSecret secret, Map<String, byte[]> documents) {
+        if (!VoucherDocuments.isByReference(secret)) {
+            return read(secret);
+        }
+        return VoucherDocuments.resolve(secret, documents).map(UnlockedVoucherBlob::read).orElse(null);
     }
 
     /**

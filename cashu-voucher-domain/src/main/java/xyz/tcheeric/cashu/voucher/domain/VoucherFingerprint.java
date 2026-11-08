@@ -95,6 +95,27 @@ public class VoucherFingerprint {
     }
 
     /**
+     * Computes the fingerprint of an unlocked voucher proof secret, inline or by reference.
+     *
+     * <p>Computed from the resolved voucher, so v1 and v2 proofs of one voucher share a
+     * fingerprint (cashu-voucher#64).
+     *
+     * @param proofSecret an unlocked {@code VOUCHER} proof secret
+     * @param documents documents keyed by {@code hex(SHA256(document))}, may be null
+     * @return the fingerprint, or null when the voucher cannot be read or resolved
+     */
+    public String compute(xyz.tcheeric.cashu.common.nut10.WellKnownSecret proofSecret,
+                          java.util.Map<String, byte[]> documents) {
+        Objects.requireNonNull(proofSecret, "Secret must not be null");
+        VoucherSecret voucher = UnlockedVoucherBlob.read(proofSecret, documents);
+        if (voucher == null || voucher.getVoucherId() == null
+                || voucher.getIssuerId() == null || voucher.getIssuerId().isBlank()) {
+            return null;
+        }
+        return compute(voucher);
+    }
+
+    /**
      * Computes the fingerprint from raw voucher components.
      *
      * <p>This method is useful when you have the components but not
