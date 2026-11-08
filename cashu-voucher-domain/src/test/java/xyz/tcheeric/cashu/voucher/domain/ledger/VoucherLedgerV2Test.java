@@ -107,14 +107,65 @@ class VoucherLedgerV2Test {
     }
 
     @Test
+    @DisplayName("terminal detection: absent metadata is an ordinary voucher")
     void terminalDetection() {
         assertThat(VoucherLedgerV2.isTerminalCredential("{\"terminal\":true}")).isTrue();
-        assertThat(VoucherLedgerV2.isTerminalCredential("{\"terminal\":\"true\"}")).isFalse();
         assertThat(VoucherLedgerV2.isTerminalCredential("{\"terminal\":false}")).isFalse();
-        assertThat(VoucherLedgerV2.isTerminalCredential("[true]")).isFalse();
-        assertThat(VoucherLedgerV2.isTerminalCredential("not json")).isFalse();
+        assertThat(VoucherLedgerV2.isTerminalCredential("{\"campaign\":\"x\"}")).isFalse();
+        assertThat(VoucherLedgerV2.isTerminalCredential("{\"terminal\":null}")).isFalse();
         assertThat(VoucherLedgerV2.isTerminalCredential("")).isFalse();
         assertThat(VoucherLedgerV2.isTerminalCredential(null)).isFalse();
+    }
+
+    /**
+     * Metadata we cannot read must never be published as an ordinary voucher: it might be a till's
+     * credential. Each of these used to answer "not a credential", so the credential was published.
+     */
+    @Test
+    @DisplayName("terminal detection fails closed on metadata it cannot read")
+    void terminalDetectionFailsClosed() {
+        assertThat(VoucherLedgerV2.isTerminalCredential("{\"terminal\":true,\"terminal\":true}"))
+                .as("duplicate key").isTrue();
+        assertThat(VoucherLedgerV2.isTerminalCredential("{\"terminal\":true} trailing"))
+                .as("trailing data").isTrue();
+        assertThat(VoucherLedgerV2.isTerminalCredential("not json")).as("not JSON").isTrue();
+        assertThat(VoucherLedgerV2.isTerminalCredential("[true]")).as("an array").isTrue();
+        assertThat(VoucherLedgerV2.isTerminalCredential("\"terminal\"")).as("a bare string").isTrue();
+        assertThat(VoucherLedgerV2.isTerminalCredential("{\"terminal\":\"true\"}")).as("string true").isTrue();
+        assertThat(VoucherLedgerV2.isTerminalCredential("{\"terminal\":\" TRUE \"}")).as("string TRUE").isTrue();
+    }
+
+    @Test
+    @DisplayName("sealing refuses a voucher whose metadata cannot be read")
+    void sealRefusesUnreadableMetadata() {
+        assertThat(refusal(() -> issued(fields("{\"terminal\":true,\"terminal\":true}"))))
+                .isEqualTo(LedgerRefusal.TERMINAL_CREDENTIAL);
+    }
+
+    /**
+     * Logging a voucher, an opened event or a resolved status must not leak the memo, the merchant
+     * metadata, the warrant (a terminal warrant carries the till's credential secret) or the ids
+     * (the voucher id is the key to the ledger entry).
+     */
+    @Test
+    @DisplayName("toString never prints memo, metadata, warrant or ids")
+    void toStringLeaksNothing() {
+        String memo = "memo-secret-7d1";
+        String metadata = "{\"note\":\"metadata-secret-4a2\"}";
+        String warrant = "warrant-secret-9c3";
+        VoucherFields f = new VoucherFields(VOUCHER_ID, STALL, PLATFORM, "sat", 1000L, 2L, 1790000000L,
+                memo, "MINIMAL", "0.5", metadata, warrant);
+        LedgerEvent event = VoucherLedgerV2.seal(new LedgerEntry(VoucherStatus.ISSUED, f, null),
+                Hex.decode(PLATFORM_SK), PLATFORM_ROOT).template();
+        byte[] ref = f.ref();
+        VoucherLedgerV2.Opened opened = VoucherLedgerV2.open(event, ref, List.of(PLATFORM)).orElseThrow();
+        VoucherLedgerV2.Resolved resolved = VoucherLedgerV2.resolve(List.of(event), ref, List.of(PLATFORM))
+                .orElseThrow();
+
+        for (String printed : List.of(f.toString(), opened.toString(), resolved.toString(),
+                new LedgerEntry(VoucherStatus.ISSUED, f, null).toString())) {
+            assertThat(printed).doesNotContain(memo, "metadata-secret-4a2", warrant, VOUCHER_ID, STALL);
+        }
     }
 
     @Test

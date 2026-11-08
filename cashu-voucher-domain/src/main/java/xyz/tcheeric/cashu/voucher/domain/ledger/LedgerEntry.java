@@ -61,7 +61,7 @@ public record LedgerEntry(xyz.tcheeric.cashu.voucher.domain.VoucherStatus status
 
     @Override
     public String toString() {
-        return "LedgerEntry[status=" + status + ", voucherId=" + voucher.voucherId()
+        return "LedgerEntry[status=" + status + ", voucher=" + voucher
                 + ", doc=" + (doc == null ? "none" : doc.length + " bytes") + "]";
     }
 }

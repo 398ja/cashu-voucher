@@ -94,4 +94,20 @@ public record VoucherFields(String voucherId,
     private static String blankToNull(String s) {
         return s == null || s.isEmpty() ? null : s;
     }
+
+    /**
+     * Says only which fields are present. The record's default would print the memo (free text a
+     * stall typed), the merchant metadata and the issuance warrant (a terminal warrant carries the
+     * till's credential secret), and the voucher and issuer ids, which are the key to the voucher's
+     * ledger entry. None of them belongs in a log.
+     */
+    @Override
+    public String toString() {
+        return "VoucherFields[unit=" + unit
+                + ", hasFaceValue=" + (faceValue != null)
+                + ", hasExpiry=" + (expiresAt != null)
+                + ", hasMemo=" + (memo != null)
+                + ", hasMetadata=" + (merchantMetadata != null)
+                + ", hasWarrant=" + (issuanceWarrant != null) + "]";
+    }
 }

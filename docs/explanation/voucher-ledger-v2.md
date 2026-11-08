@@ -158,6 +158,13 @@ Republishing is idempotent: same address, same plaintext.
    `REDEEMED` beats `ISSUED`. Voucher fields come from the accepted `ISSUED` event when there
    is one.
 
+Anyone who knows `ref` can publish many events at the same `d` under throwaway outer keys.
+Each is refused by the inner signature, but each costs the reader a fetch, so readers must not
+rely on a small relay `limit` (a flood could push the genuine events out of the result).
+
+Terminal detection fails closed: non-empty `merchantMetadata` that is not one strictly
+parseable JSON object, or whose `terminal` is `true` or `"true"`, is never published.
+
 `issuerId` is x-only hex for stalls. A reader that cannot parse it as a key accepts only
 trusted-key signers. The event's outer author (`sk_v`) is never trusted for anything: it
 only makes the address replaceable by its publisher.

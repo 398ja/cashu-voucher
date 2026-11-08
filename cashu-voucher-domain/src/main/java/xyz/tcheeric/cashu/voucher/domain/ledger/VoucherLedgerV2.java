@@ -85,6 +85,12 @@ public final class VoucherLedgerV2 {
         public void wipe() {
             Arrays.fill(eventSecretKey, (byte) 0);
         }
+
+        /** Never prints the event key. */
+        @Override
+        public String toString() {
+            return "Sealed[pubkey=" + template.pubkey() + "]";
+        }
     }
 
     /** {@link #seal(LedgerEntry, byte[], byte[], byte[], byte[])} with fresh random nonce and aux. */
@@ -221,20 +227,36 @@ public final class VoucherLedgerV2 {
     }
 
     /**
-     * True when {@code merchantMetadataJson} is a JSON object whose {@code terminal} is the boolean
-     * {@code true}. Anything else (absent, not JSON, {@code "yes"}) is false.
+     * True when the voucher must be treated as a terminal credential, which is never published.
+     *
+     * <p>Fails closed. Absent or empty metadata is an ordinary voucher. Anything else that is not a
+     * strictly parseable JSON object (invalid JSON, a duplicate key, trailing data, an array) is
+     * treated as a terminal credential, because answering "not a credential" for metadata we cannot
+     * read would publish a till's credential the day its metadata is malformed. {@code terminal}
+     * counts when it is the boolean {@code true} or the string {@code "true"} (any case), so a
+     * credential written with a stringly-typed flag is not published either.
      */
     public static boolean isTerminalCredential(String merchantMetadataJson) {
         if (merchantMetadataJson == null || merchantMetadataJson.isEmpty()) {
             return false;
         }
+        JsonNode node;
         try {
-            JsonNode node = JSON.readTree(merchantMetadataJson);
-            return node != null && node.isObject() && node.path("terminal").isBoolean()
-                    && node.get("terminal").booleanValue();
-        } catch (Exception notJson) {
+            node = JSON.readTree(merchantMetadataJson);
+        } catch (Exception unreadable) {
+            return true;
+        }
+        if (node == null || !node.isObject()) {
+            return true;
+        }
+        JsonNode terminal = node.get("terminal");
+        if (terminal == null || terminal.isNull()) {
             return false;
         }
+        if (terminal.isBoolean()) {
+            return terminal.booleanValue();
+        }
+        return terminal.isTextual() && "true".equalsIgnoreCase(terminal.textValue().trim());
     }
 
     // ===================================================================== reading
@@ -254,6 +276,12 @@ public final class VoucherLedgerV2 {
         public VoucherStatus status() {
             return entry.status();
         }
+
+        /** Status only: the entry's fields and document stay out of logs. */
+        @Override
+        public String toString() {
+            return "Opened[status=" + entry.status() + ", docDropped=" + docDropped + "]";
+        }
     }
 
     /** The folded status of a voucher. */
@@ -266,6 +294,13 @@ public final class VoucherLedgerV2 {
         @Override
         public byte[] doc() {
             return doc == null ? null : doc.clone();
+        }
+
+        /** Status and counts only: the voucher's fields and document stay out of logs. */
+        @Override
+        public String toString() {
+            return "Resolved[status=" + status + ", accepted=" + accepted.size()
+                    + ", doc=" + (doc == null ? "none" : "present") + "]";
         }
     }
 
@@ -380,6 +415,11 @@ public final class VoucherLedgerV2 {
      * The status is the accepted event with the highest {@code seq}, ties going to
      * {@code REVOKED} over {@code REDEEMED} over {@code ISSUED}; the voucher fields and document
      * come from an accepted {@code ISSUED} event when there is one.
+     *
+     * <p>Anyone who knows {@code ref} can publish any number of events at its {@code d} under
+     * throwaway outer keys. Each is refused here by the inner signature, but a reader that fetched
+     * with a small relay {@code limit} could see only the junk and miss the real events, so readers
+     * must not rely on one.
      */
     public static Optional<Resolved> resolve(List<LedgerEvent> events, byte[] ref,
                                              Collection<String> trustedIssuerKeys) {
