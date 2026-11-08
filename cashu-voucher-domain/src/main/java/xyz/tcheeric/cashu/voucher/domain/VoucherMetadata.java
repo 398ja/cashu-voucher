@@ -51,8 +51,23 @@ public final class VoucherMetadata {
         if (secret.getKind() == WellKnownSecret.Kind.P2PK_VOUCHER) {
             return tagValue(secret, VoucherTags.VOUCHER_ID);
         }
+        if (isUnresolvedReference(secret)) {
+            // A 32-byte SHA-256 is not a voucher id (cashu-voucher#64).
+            return null;
+        }
         byte[] data = secret.getData();
         return data == null ? null : new String(data, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Whether this is a by-reference voucher whose document has not been resolved yet
+     * ({@link VoucherDocuments#isByReference}). Its terms are not in the secret at all, so
+     * every other reader here answers "nothing", and a verifier must resolve it with
+     * {@link VoucherDocuments#resolveForVerification} or refuse it. It is never an
+     * unsigned voucher, and never plain sats.
+     */
+    public static boolean isUnresolvedReference(@NonNull WellKnownSecret secret) {
+        return VoucherDocuments.isByReference(secret);
     }
 
     /** The issuing merchant's identifier, or {@code null}. */

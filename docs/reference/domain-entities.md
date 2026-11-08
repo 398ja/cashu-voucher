@@ -296,7 +296,37 @@ ValidationResult validateSignatureOnly(SignedVoucher voucher)
 
 // Expiry only
 ValidationResult validateExpiryOnly(SignedVoucher voucher)
+
+// An unlocked proof secret, inline (v1) or by reference (v2, cashu-voucher#64)
+ValidationResult validateProofSecret(WellKnownSecret proofSecret, Map<String, byte[]> documents)
+Optional<SignedVoucher> readProofSecret(WellKnownSecret proofSecret, Map<String, byte[]> documents,
+                                        List<String> errors)
 ```
+
+## VoucherDocuments
+
+Voucher documents referenced by hash from an unlocked `VOUCHER` proof (cashu-voucher#64, see
+[voucher by reference](../explanation/voucher-by-reference.md)). Documents are a
+`Map<String, byte[]>` from `hex(SHA256(document))` to the document bytes. Never throws on
+untrusted input.
+
+```java
+int MAX_DOCUMENT_BYTES = 65536;
+String key(byte[] document)                                   // lowercase hex SHA-256
+boolean isByReference(WellKnownSecret secret)                 // VOUCHER, no tags, 32-byte data
+List<String> validate(Map<String, byte[]> documents, int maxEntries)   // empty = acceptable
+Optional<WellKnownSecret> resolve(WellKnownSecret secret, Map<String, byte[]> documents)
+Resolution resolveForVerification(WellKnownSecret secret, Map<String, byte[]> documents)
+// Resolution: NotByReference | Resolved(key, secret) | Missing(key) | Mismatch(key)
+```
+
+`resolve` returns exactly the v1 secret of the same voucher (the proof's nonce, `data` = the
+document, no tags). Related readers:
+
+- `UnlockedVoucherBlob.read(secret, documents)` reads either form. `read(secret)` returns `null`
+  for a by-reference secret, so legacy callers fail closed.
+- `VoucherMetadata.isUnresolvedReference(secret)`; `voucherId` returns `null` for one.
+- `VoucherFingerprint.compute(proofSecret, documents)` is the same for both forms.
 
 ### ValidationResult
 

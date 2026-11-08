@@ -10,13 +10,18 @@ import xyz.tcheeric.cashu.common.nut18.VoucherPaymentPayload;
 import xyz.tcheeric.cashu.common.nut18.VoucherPaymentRequest;
 import xyz.tcheeric.cashu.voucher.app.ports.IssuerKeyRegistry;
 import xyz.tcheeric.cashu.voucher.app.ports.VoucherLedgerPort;
+import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
+import xyz.tcheeric.cashu.common.nut18.PaymentPayloadProof;
+import xyz.tcheeric.cashu.common.util.SecretUtil;
 import xyz.tcheeric.cashu.voucher.domain.SignedVoucher;
+import xyz.tcheeric.cashu.voucher.domain.VoucherDocuments;
 import xyz.tcheeric.cashu.voucher.domain.VoucherStatus;
 import xyz.tcheeric.cashu.voucher.domain.VoucherValidator;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -386,6 +391,75 @@ public class MerchantVerificationService {
             String error = "Verification passed but failed to mark as redeemed: " + e.getMessage();
             log.error("Redemption failed at marking stage: voucherId={}", voucherId, e);
             return RedeemVoucherResponse.failure(error);
+        }
+    }
+
+    /**
+     * Verifies an unlocked voucher proof secret offline, inline (v1) or by reference (v2).
+     *
+     * <p>A by-reference secret is resolved against {@code documents} first; a missing or
+     * mismatched document fails. The resolved voucher then goes through
+     * {@link #verifyOffline(SignedVoucher, String)} unchanged (cashu-voucher#64).
+     *
+     * @param proofSecret an unlocked {@code VOUCHER} proof secret
+     * @param documents documents keyed by {@code hex(SHA256(document))}, may be null
+     * @param expectedIssuerId the merchant's issuer ID
+     * @return the verification result
+     */
+    public VerificationResult verifyOffline(
+            @NonNull WellKnownSecret proofSecret,
+            Map<String, byte[]> documents,
+            @NonNull String expectedIssuerId
+    ) {
+        if (expectedIssuerId.isBlank()) {
+            throw new IllegalArgumentException("Expected issuer ID cannot be blank");
+        }
+        List<String> errors = new ArrayList<>();
+        Optional<SignedVoucher> voucher = VoucherValidator.readProofSecret(proofSecret, documents, errors);
+        return voucher.map(v -> verifyOffline(v, expectedIssuerId))
+                .orElseGet(() -> VerificationResult.failure(errors));
+    }
+
+    /**
+     * {@link #validatePaymentPayload(VoucherPaymentPayload, VoucherPaymentRequest)} for a payload
+     * whose proofs may reference their voucher documents (cashu-voucher#64).
+     *
+     * <p>Additionally refuses a document map that {@link VoucherDocuments#validate} refuses
+     * (with at most one entry per proof), and any by-reference proof whose document is
+     * missing or mismatched. With no by-reference proofs and no documents this is exactly
+     * the two-argument method.
+     *
+     * @param documents the payload's documents keyed by {@code hex(SHA256(document))}, may be null
+     */
+    public VerificationResult validatePaymentPayload(
+            @NonNull VoucherPaymentPayload payload,
+            @NonNull VoucherPaymentRequest originalRequest,
+            Map<String, byte[]> documents
+    ) {
+        VerificationResult base = validatePaymentPayload(payload, originalRequest);
+        List<String> errors = new ArrayList<>(base.getErrors());
+        List<PaymentPayloadProof> proofs = payload.getProofs() == null ? List.of() : payload.getProofs();
+        errors.addAll(VoucherDocuments.validate(documents, proofs.size()));
+        for (PaymentPayloadProof proof : proofs) {
+            WellKnownSecret secret = parseSecret(proof.getSecret());
+            VoucherDocuments.Resolution resolution = VoucherDocuments.resolveForVerification(secret, documents);
+            if (resolution instanceof VoucherDocuments.Resolution.Missing missing) {
+                errors.add("Proof references voucher document " + missing.key() + " but the payload does not carry it");
+            } else if (resolution instanceof VoucherDocuments.Resolution.Mismatch mismatch) {
+                errors.add("Voucher document " + mismatch.key() + " does not match its reference");
+            }
+        }
+        return errors.isEmpty() ? VerificationResult.success() : VerificationResult.failure(errors);
+    }
+
+    private static WellKnownSecret parseSecret(String secret) {
+        if (secret == null || secret.isBlank()) {
+            return null;
+        }
+        try {
+            return SecretUtil.toSecret(secret) instanceof WellKnownSecret wks ? wks : null;
+        } catch (RuntimeException unparseable) {
+            return null;
         }
     }
 

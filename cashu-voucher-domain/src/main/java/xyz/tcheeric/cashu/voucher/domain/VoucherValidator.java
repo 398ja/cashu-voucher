@@ -8,6 +8,7 @@ import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Validates vouchers for correctness and authenticity.
@@ -271,5 +272,57 @@ public final class VoucherValidator {
      */
     public static boolean isValid(@NonNull SignedVoucher voucher) {
         return validate(voucher).isValid();
+    }
+
+    /**
+     * Reads an unlocked voucher proof secret, inline (v1) or by reference (v2), into the
+     * signed voucher it carries, or explains why it cannot (cashu-voucher#64).
+     *
+     * @param proofSecret an unlocked {@code VOUCHER} proof secret
+     * @param documents documents keyed by {@code hex(SHA256(document))}, may be null
+     * @return the signed voucher, or empty with the reason added to {@code errors}
+     */
+    public static java.util.Optional<SignedVoucher> readProofSecret(
+            @NonNull xyz.tcheeric.cashu.common.nut10.WellKnownSecret proofSecret,
+            Map<String, byte[]> documents,
+            @NonNull List<String> errors
+    ) {
+        if (proofSecret.getKind() != xyz.tcheeric.cashu.common.nut10.WellKnownSecret.Kind.VOUCHER) {
+            errors.add("Not an unlocked voucher proof");
+            return java.util.Optional.empty();
+        }
+        VoucherDocuments.Resolution resolution = VoucherDocuments.resolveForVerification(proofSecret, documents);
+        if (resolution instanceof VoucherDocuments.Resolution.Missing missing) {
+            errors.add("Voucher document " + missing.key() + " is missing, the voucher is unverifiable");
+            return java.util.Optional.empty();
+        }
+        if (resolution instanceof VoucherDocuments.Resolution.Mismatch mismatch) {
+            errors.add("Voucher document " + mismatch.key() + " does not match its reference");
+            return java.util.Optional.empty();
+        }
+        VoucherSecret voucher = UnlockedVoucherBlob.read(proofSecret, documents);
+        if (voucher == null) {
+            errors.add("Voucher terms could not be read");
+            return java.util.Optional.empty();
+        }
+        if (!voucher.isSigned()) {
+            errors.add("Voucher is unsigned");
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of(new SignedVoucher(voucher));
+    }
+
+    /**
+     * {@link #validate} for an unlocked voucher proof secret, inline or by reference.
+     * A by-reference secret whose document is missing or wrong fails.
+     */
+    public static ValidationResult validateProofSecret(
+            @NonNull xyz.tcheeric.cashu.common.nut10.WellKnownSecret proofSecret,
+            Map<String, byte[]> documents
+    ) {
+        List<String> errors = new ArrayList<>();
+        return readProofSecret(proofSecret, documents, errors)
+                .map(VoucherValidator::validate)
+                .orElseGet(() -> ValidationResult.failure(errors));
     }
 }

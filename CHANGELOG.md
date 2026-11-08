@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Vouchers by reference, reader side (#64, phase A).** An unlocked `VOUCHER` proof may carry
+  `SHA256(D)` in `data` instead of the signed document `D`, with `D` travelling once beside the
+  proofs (`docs/explanation/voucher-by-reference.md`). New `VoucherDocuments` (`key`,
+  `isByReference`, `validate`, `resolve`, `resolveForVerification` with a sealed
+  `NotByReference | Resolved | Missing | Mismatch` result), `UnlockedVoucherBlob.read(secret,
+  documents)`, `VoucherValidator.validateProofSecret` / `readProofSecret`,
+  `VoucherFingerprint.compute(proofSecret, documents)`, `VoucherMetadata.isUnresolvedReference`,
+  `MerchantVerificationService.verifyOffline(proofSecret, documents, issuerId)` and
+  `validatePaymentPayload(payload, request, documents)`. A resolved v2 proof is byte-identical
+  to its v1 form, so every check gives the same verdict. Golden vectors in
+  `voucher-by-reference-vectors.json`. Still on cashu-lib 0.30.7; documents are plain
+  `Map<String, byte[]>`.
+
+### Changed
+
+- **An unresolved by-reference secret fails closed.** `UnlockedVoucherBlob.read(secret)` returns
+  `null` and `VoucherMetadata.voucherId` returns `null` for one, instead of decoding a hash as a
+  blob or a voucher id. Inline (v1) proofs behave exactly as before.
+
 ## [0.17.1] - 2026-10-22
 
 > **Release gate (owner decision D10, cashu-mint#540):** released after owner approval with the
