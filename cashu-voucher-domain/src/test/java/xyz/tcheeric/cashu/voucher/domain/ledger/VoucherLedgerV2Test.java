@@ -168,6 +168,22 @@ class VoucherLedgerV2Test {
         }
     }
 
+    /**
+     * A number a JavaScript reader cannot hold exactly would let Java and TypeScript read one event
+     * as two vouchers, so 2^53 - 1 is the bound on both sides (the wallet refuses beyond it too).
+     */
+    @Test
+    @DisplayName("numbers beyond 2^53 - 1 are refused on write and on read")
+    void safeIntegerBound() {
+        long max = VoucherFields.MAX_SAFE_INTEGER;
+        assertThat(new VoucherFields(VOUCHER_ID, STALL, null, "sat", max, 0L, -max, null, null, null, null, null)
+                .faceValue()).isEqualTo(max);
+        assertThatThrownBy(() -> new VoucherFields(VOUCHER_ID, STALL, null, "sat", max + 1, 0L, null,
+                null, null, null, null, null)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new VoucherFields(VOUCHER_ID, STALL, null, "sat", 1L, 0L, -max - 1,
+                null, null, null, null, null)).isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test
     void refusesRedeemedByNonStall() {
         assertThat(refusal(() -> VoucherLedgerV2.seal(new LedgerEntry(VoucherStatus.REDEEMED, fields(null), null),

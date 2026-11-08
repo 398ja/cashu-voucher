@@ -28,6 +28,9 @@ public record VoucherFields(String voucherId,
     public VoucherFields {
         voucherId = VoucherLedgerRef.normaliseVoucherId(voucherId);
         issuerId = VoucherLedgerRef.normaliseIssuerId(issuerId);
+        requireSafeInteger("faceValue", faceValue);
+        requireSafeInteger("faceDecimals", faceDecimals);
+        requireSafeInteger("expiresAt", expiresAt);
         issuerPublicKey = blankToNull(issuerPublicKey);
         unit = blankToNull(unit);
         memo = blankToNull(memo);
@@ -93,6 +96,19 @@ public record VoucherFields(String voucherId,
 
     private static String blankToNull(String s) {
         return s == null || s.isEmpty() ? null : s;
+    }
+
+    /** 2^53 - 1: the largest integer a JavaScript reader holds exactly. */
+    static final long MAX_SAFE_INTEGER = 9_007_199_254_740_991L;
+
+    /**
+     * Numbers must survive a JavaScript reader exactly, or Java and TypeScript would read one
+     * event as two different vouchers. No real face value, decimal count or expiry comes close.
+     */
+    private static void requireSafeInteger(String name, Long value) {
+        if (value != null && (value > MAX_SAFE_INTEGER || value < -MAX_SAFE_INTEGER)) {
+            throw new IllegalArgumentException(name + " is beyond a safe integer (2^53 - 1)");
+        }
     }
 
     /**

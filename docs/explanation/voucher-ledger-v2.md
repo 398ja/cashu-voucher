@@ -119,8 +119,10 @@ No other tag. No `p`, no amount, no unit, no status in clear.
 - Keys are written in exactly the order shown. Unknown keys are refused by readers.
 - `voucher.voucherId` and `voucher.issuerId` are required, and are written exactly as they
   went into `ref` (lowercase). The other fields are optional and omitted when unknown or
-  empty. `faceValue`, `faceDecimals` and `expiresAt` are JSON integers (int64, no sign for
-  non-negative values, no exponent). `issuanceRatio` is a string in the canonical spelling
+  empty. `faceValue`, `faceDecimals` and `expiresAt` are JSON integers (no sign for
+  non-negative values, no exponent) within the JavaScript safe range, `|n| <= 2^53 - 1`,
+  so every reader holds them exactly; writers and readers refuse anything outside it.
+  `issuanceRatio` is a string in the canonical spelling
   the voucher signs (`VoucherSecret.canonicalIssuanceRatio`: `"2"`, `"0.5"`), so no reader
   has to format a floating-point number. `merchantMetadata` and `issuanceWarrant` are the
   JSON strings the voucher carries, verbatim.
