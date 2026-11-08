@@ -7,10 +7,12 @@ import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 /**
@@ -41,6 +43,9 @@ public final class VoucherDocuments {
 
     private static final Pattern KEY = Pattern.compile("^[0-9a-f]{64}$");
     private static final HexFormat HEX = HexFormat.of();
+
+    /** Test seam: number of document hashes computed (cashu-voucher#64, review M2). */
+    static final AtomicLong HASHES = new AtomicLong();
 
     private VoucherDocuments() {
     }
@@ -145,10 +150,66 @@ public final class VoucherDocuments {
         if (document.length > MAX_DOCUMENT_BYTES || !key.equals(key(document))) {
             return new Resolution.Mismatch(key);
         }
+        return new Resolution.Resolved(key, resolvedSecret(secret, document));
+    }
+
+    /**
+     * Validates a document map once and returns a value that resolves proofs by lookup only.
+     *
+     * <p>Each document is hashed exactly once, here. When {@link Validated#errors()} is not
+     * empty the map must be refused and {@link Validated#resolve} throws.
+     */
+    public static Validated validated(Map<String, byte[]> documents, int maxEntries) {
+        List<String> errors = validate(documents, maxEntries);
+        Map<String, byte[]> copy = new HashMap<>();
+        if (errors.isEmpty() && documents != null) {
+            documents.forEach((k, v) -> copy.put(k, v.clone()));
+        }
+        return new Validated(List.copyOf(errors), copy);
+    }
+
+    /** A document map whose every entry has been hash-checked by {@link #validated}. */
+    public static final class Validated {
+        private final List<String> errors;
+        private final Map<String, byte[]> documents;
+
+        private Validated(List<String> errors, Map<String, byte[]> documents) {
+            this.errors = errors;
+            this.documents = documents;
+        }
+
+        /** Why the map was refused, or empty when every entry matched its key. */
+        public List<String> errors() {
+            return errors;
+        }
+
+        /**
+         * Like {@link VoucherDocuments#resolveForVerification}, without re-hashing: every entry
+         * already hashes to its key. Never answers {@link Resolution.Mismatch}.
+         *
+         * @throws IllegalStateException when the map was refused
+         */
+        public Resolution resolve(WellKnownSecret secret) {
+            if (!errors.isEmpty()) {
+                throw new IllegalStateException("Voucher documents were refused: " + errors);
+            }
+            if (!isByReference(secret)) {
+                return new Resolution.NotByReference();
+            }
+            String key = HEX.formatHex(secret.getData());
+            byte[] document = documents.get(key);
+            if (document == null) {
+                return new Resolution.Missing(key);
+            }
+            return new Resolution.Resolved(key, resolvedSecret(secret, document));
+        }
+    }
+
+    private static VoucherSecret resolvedSecret(WellKnownSecret secret, byte[] document) {
         VoucherSecret resolved = new VoucherSecret();
         resolved.setData(document.clone());
         resolved.setNonce(secret.getNonce());
-        return new Resolution.Resolved(key, resolved);
+        return resolved;
     }
 
     /** Outcome of {@link #resolveForVerification}. */
@@ -172,6 +233,7 @@ public final class VoucherDocuments {
     }
 
     private static byte[] sha256(byte[] input) {
+        HASHES.incrementAndGet();
         try {
             return MessageDigest.getInstance("SHA-256").digest(input);
         } catch (NoSuchAlgorithmException e) {

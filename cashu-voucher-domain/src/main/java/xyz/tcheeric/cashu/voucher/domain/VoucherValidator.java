@@ -300,7 +300,9 @@ public final class VoucherValidator {
             errors.add("Voucher document " + mismatch.key() + " does not match its reference");
             return java.util.Optional.empty();
         }
-        VoucherSecret voucher = UnlockedVoucherBlob.read(proofSecret, documents);
+        // Decode the already-resolved secret: resolving again would hash the document twice.
+        VoucherSecret voucher = UnlockedVoucherBlob.read(
+                resolution instanceof VoucherDocuments.Resolution.Resolved resolved ? resolved.secret() : proofSecret);
         if (voucher == null) {
             errors.add("Voucher terms could not be read");
             return java.util.Optional.empty();

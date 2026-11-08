@@ -439,10 +439,15 @@ public class MerchantVerificationService {
         VerificationResult base = validatePaymentPayload(payload, originalRequest);
         List<String> errors = new ArrayList<>(base.getErrors());
         List<PaymentPayloadProof> proofs = payload.getProofs() == null ? List.of() : payload.getProofs();
-        errors.addAll(VoucherDocuments.validate(documents, proofs.size()));
+        // Hash each document once, then resolve proofs by lookup (review M2).
+        VoucherDocuments.Validated validated = VoucherDocuments.validated(documents, proofs.size());
+        if (!validated.errors().isEmpty()) {
+            errors.addAll(validated.errors());
+            return VerificationResult.failure(errors);
+        }
         for (PaymentPayloadProof proof : proofs) {
             WellKnownSecret secret = parseSecret(proof.getSecret());
-            VoucherDocuments.Resolution resolution = VoucherDocuments.resolveForVerification(secret, documents);
+            VoucherDocuments.Resolution resolution = validated.resolve(secret);
             if (resolution instanceof VoucherDocuments.Resolution.Missing missing) {
                 errors.add("Proof references voucher document " + missing.key() + " but the payload does not carry it");
             } else if (resolution instanceof VoucherDocuments.Resolution.Mismatch mismatch) {

@@ -152,6 +152,61 @@ class VoucherDocumentsTest {
     }
 
     @Test
+    @DisplayName("validated hashes each distinct document once, however many proofs reference it (review M2)")
+    void validatedHashesOnce() throws Exception {
+        byte[] doc = captured().getData().clone();
+        byte[] other = "second document".getBytes(StandardCharsets.UTF_8);
+        Map<String, byte[]> map = docs(doc, other);
+        List<WellKnownSecret> refs = new java.util.ArrayList<>();
+        for (int i = 0; i < 1000; i++) {
+            refs.add(parse(v2(String.format("%064x", i), i % 2 == 0 ? doc : other)));
+        }
+        long before = VoucherDocuments.HASHES.get();
+        VoucherDocuments.Validated validated = VoucherDocuments.validated(map, 1000);
+        assertThat(validated.errors()).isEmpty();
+        for (int i = 0; i < 1000; i++) {
+            VoucherDocuments.Resolution r = validated.resolve(refs.get(i));
+            assertThat(r).isInstanceOf(VoucherDocuments.Resolution.Resolved.class);
+            assertThat(((VoucherDocuments.Resolution.Resolved) r).secret().getNonce())
+                    .isEqualTo(String.format("%064x", i));
+        }
+        assertThat(VoucherDocuments.HASHES.get() - before).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("validated keeps refusals: missing reads Missing, bad map refuses with the same errors")
+    void validatedRefusals() throws Exception {
+        byte[] doc = captured().getData().clone();
+        WellKnownSecret ref = v2Of(captured());
+        assertThat(VoucherDocuments.validated(null, 1).resolve(ref))
+                .isInstanceOf(VoucherDocuments.Resolution.Missing.class);
+        assertThat(VoucherDocuments.validated(docs("x".getBytes()), 1).resolve(ref))
+                .isInstanceOf(VoucherDocuments.Resolution.Missing.class);
+        assertThat(VoucherDocuments.validated(null, 1).resolve(captured()))
+                .isInstanceOf(VoucherDocuments.Resolution.NotByReference.class);
+        Map<String, byte[]> bad = Map.of(VoucherDocuments.key(doc), "other".getBytes());
+        VoucherDocuments.Validated refused = VoucherDocuments.validated(bad, 1);
+        assertThat(refused.errors()).isEqualTo(VoucherDocuments.validate(bad, 1));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> refused.resolve(ref))
+                .isInstanceOf(IllegalStateException.class);
+        // A mutation after validation cannot smuggle a different document in.
+        Map<String, byte[]> mutable = new HashMap<>(docs(doc));
+        VoucherDocuments.Validated v = VoucherDocuments.validated(mutable, 1);
+        mutable.put(VoucherDocuments.key(doc), "swapped".getBytes());
+        assertThat(((VoucherDocuments.Resolution.Resolved) v.resolve(ref)).secret().getData()).isEqualTo(doc);
+    }
+
+    @Test
+    @DisplayName("readProofSecret hashes the referenced document once (review L3)")
+    void readProofSecretHashesOnce() throws Exception {
+        WellKnownSecret ref = v2Of(captured());
+        Map<String, byte[]> map = docs(captured().getData());
+        long before = VoucherDocuments.HASHES.get();
+        assertThat(VoucherValidator.readProofSecret(ref, map, new java.util.ArrayList<>())).isPresent();
+        assertThat(VoucherDocuments.HASHES.get() - before).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("validate refuses bad maps and accepts good ones")
     void validate() {
         byte[] d = "document".getBytes(StandardCharsets.UTF_8);

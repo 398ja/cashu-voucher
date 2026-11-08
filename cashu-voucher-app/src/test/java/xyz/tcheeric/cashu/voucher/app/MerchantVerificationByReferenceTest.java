@@ -131,6 +131,15 @@ class MerchantVerificationByReferenceTest {
         var wrong = service.validatePaymentPayload(payload(v2(doc)), request(),
                 Map.of(VoucherDocuments.key(doc), "x".getBytes()));
         assertThat(wrong.isValid()).isFalse();
+        assertThat(wrong.getErrorMessage()).contains("is not the SHA-256 of its value");
+
+        // A refused map stops before per-proof resolution, but keeps the base payload errors.
+        var both = service.validatePaymentPayload(payload(v2(doc)),
+                VoucherPaymentRequest.builder().paymentId("other").issuerId(ISSUER_ID).amount(1000).unit("sat").build(),
+                Map.of(VoucherDocuments.key(doc), "x".getBytes()));
+        assertThat(both.getErrors()).anyMatch(e -> e.contains("not the SHA-256"));
+        assertThat(both.getErrors()).hasSizeGreaterThan(1);
+        assertThat(both.getErrors()).noneMatch(e -> e.contains("does not carry"));
 
         Map<String, byte[]> tooMany = new LinkedHashMap<>(docs(doc));
         tooMany.putAll(docs("y".getBytes()));
