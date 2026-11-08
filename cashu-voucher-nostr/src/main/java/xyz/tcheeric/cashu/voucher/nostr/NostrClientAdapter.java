@@ -173,9 +173,10 @@ public class NostrClientAdapter {
     /**
      * Publishes an event to all connected relays.
      *
-     * <p>This method publishes the event to all relays in parallel and waits for
-     * confirmations. The operation is considered successful if at least one relay
-     * confirms receipt.
+     * <p>Sends {@code ["EVENT", event]} to every connected relay in parallel and waits for each
+     * relay's {@code OK}. A relay counts as successful only on {@code ["OK", id, true]};
+     * {@code OK=false}, a connection error, a close or no OK before {@code timeoutMs} counts as
+     * a failure. The event must already carry its id and signature.
      *
      * @param event the event to publish (must not be null)
      * @param timeoutMs timeout for waiting for confirmations
@@ -187,38 +188,27 @@ public class NostrClientAdapter {
 
         log.debug("Publishing event: id={}, kind={}", event.getId(), event.getKind());
 
-        List<CompletableFuture<Boolean>> futures = new ArrayList<>();
+        Map<String, CompletableFuture<Boolean>> futures = new LinkedHashMap<>();
+        for (String relayUrl : connections.keySet()) {
+            futures.put(relayUrl, RelayPublish.run(relayUrl, event, timeoutMs));
+        }
 
-        for (Map.Entry<String, RelayConnection> entry : connections.entrySet()) {
-            String relayUrl = entry.getKey();
-            RelayConnection conn = entry.getValue();
-
-            CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(() -> {
-                try {
-                    return conn.publish(event);
-                } catch (Exception e) {
-                    log.error("Failed to publish to relay: {}", relayUrl, e);
-                    return false;
+        // A relay counts only on ["OK", id, true]. OK=false, an error, a close or a timeout is a failure.
+        long successCount = 0;
+        for (Map.Entry<String, CompletableFuture<Boolean>> entry : futures.entrySet()) {
+            try {
+                if (Boolean.TRUE.equals(entry.getValue().get(timeoutMs, TimeUnit.MILLISECONDS))) {
+                    successCount++;
                 }
-            });
-
-            futures.add(future);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                futures.values().forEach(f -> f.cancel(true));
+                throw new VoucherNostrException("Publish interrupted", e);
+            } catch (Exception e) {
+                entry.getValue().cancel(true);
+                log.warn("Publish to relay {} failed: {}", entry.getKey(), e.getMessage());
+            }
         }
-
-        // Wait for all publish attempts
-        try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                    .orTimeout(timeoutMs, TimeUnit.MILLISECONDS)
-                    .join();
-        } catch (Exception e) {
-            log.warn("Some publish operations timed out or failed", e);
-        }
-
-        // Check if at least one succeeded
-        long successCount = futures.stream()
-                .map(f -> f.getNow(false))
-                .filter(Boolean::booleanValue)
-                .count();
 
         boolean success = successCount > 0;
         log.debug("Event published: id={}, success={}/{} relays",
@@ -228,57 +218,142 @@ public class NostrClientAdapter {
     }
 
     /**
-     * Queries events from relays matching the given filter.
+     * Runs a NIP-01 query with {@code filter} on every connected relay and returns the union of
+     * the events, deduplicated by id.
      *
-     * <p>This method sends a REQ message to all connected relays and collects
-     * matching events. Duplicate events (same ID) are automatically deduplicated.
+     * <p>For each relay this opens a WebSocket, sends {@code ["REQ", sub, filter]}, collects every
+     * {@code EVENT} for {@code sub} until {@code EOSE}, then sends {@code ["CLOSE", sub]}. Values
+     * under {@code kinds} are sent as JSON integers, all others as strings. A {@code limit} is
+     * refused: readers of the voucher ledger must see every event at a locator.
      *
-     * @param subscriptionId the subscription ID for this query
-     * @param timeoutMs timeout for waiting for responses
-     * @return list of matching events (never null, may be empty)
-     * @throws VoucherNostrException if not connected or operation fails
+     * <p>Relays may cap a no-limit REQ server-side and still send EOSE, so each relay is paged
+     * with an inclusive {@code until} (see {@link #pagedQuery}); {@code until} may not be passed in.
+     *
+     * <p>Fails closed: if any relay cannot be reached, answers {@code CLOSED}, errors, or does not
+     * reach {@code EOSE} before {@code timeoutMs}, this throws instead of returning a partial or
+     * empty answer, so "no events" always means every relay said so.
+     *
+     * @param filter NIP-01 filter, e.g. {@code {"kinds":["30078"],"#d":["..."]}}
+     * @param timeoutMs overall deadline for every relay to reach EOSE
+     * @return the matching events (may be empty only when every relay answered EOSE)
+     * @throws VoucherNostrException if not connected or any relay did not answer completely
      */
-    public List<GenericEvent> queryEvents(@NonNull String subscriptionId, long timeoutMs) {
+    public List<GenericEvent> queryEvents(@NonNull Map<String, List<String>> filter, long timeoutMs) {
         ensureConnected();
-
-        log.debug("Querying events: subscriptionId={}", subscriptionId);
-
-        Map<String, GenericEvent> eventMap = new ConcurrentHashMap<>();
-
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-
-        for (Map.Entry<String, RelayConnection> entry : connections.entrySet()) {
-            String relayUrl = entry.getKey();
-            RelayConnection conn = entry.getValue();
-
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                try {
-                    List<GenericEvent> events = conn.query(subscriptionId);
-                    for (GenericEvent event : events) {
-                        eventMap.putIfAbsent(event.getId(), event);
-                    }
-                    log.debug("Received {} event(s) from relay: {}", events.size(), relayUrl);
-                } catch (Exception e) {
-                    log.error("Failed to query relay: {}", relayUrl, e);
+        if (filter.containsKey("limit") || filter.containsKey("until")) {
+            throw new IllegalArgumentException("limit and until are not allowed");
+        }
+        Map<String, CompletableFuture<Collection<GenericEvent>>> futures = new LinkedHashMap<>();
+        for (String relayUrl : connections.keySet()) {
+            futures.put(relayUrl, CompletableFuture.supplyAsync(() -> pagedQuery(relayUrl, filter, timeoutMs)));
+        }
+        Map<String, GenericEvent> eventMap = new LinkedHashMap<>();
+        for (Map.Entry<String, CompletableFuture<Collection<GenericEvent>>> entry : futures.entrySet()) {
+            Collection<GenericEvent> events;
+            try {
+                events = entry.getValue().join();
+            } catch (java.util.concurrent.CompletionException e) {
+                futures.values().forEach(f -> f.cancel(true));
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                if (cause instanceof VoucherNostrException v) {
+                    throw v;
                 }
-            });
-
-            futures.add(future);
+                throw new VoucherNostrException("Relay did not answer the query completely: " + entry.getKey(), cause);
+            }
+            for (GenericEvent event : events) {
+                eventMap.putIfAbsent(event.getId(), event);
+            }
+            requireAtMostMax(eventMap.size());
         }
+        return new ArrayList<>(eventMap.values());
+    }
 
-        // Wait for all queries
+    /**
+     * Most events one query may return. Matches the ledger's per-locator cap: above it the
+     * answer is refused, never truncated.
+     */
+    public static final int MAX_QUERY_EVENTS = 4096;
+
+    /**
+     * When paging stalls (a page adds nothing new) at {@code until = T}, the stalled page holds
+     * the relay's answer for events at T and older. If it contains this many or more events at T,
+     * the relay may have cut that second off at its cap, which no {@code until} can page past, so
+     * the answer is refused. Assumes every relay returns at least {@code SAME_SECOND_REFUSAL + 1}
+     * events per REQ (strfry and the gateway return 500). Shared with the TS reader.
+     */
+    static final int SAME_SECOND_REFUSAL = 10;
+
+    /**
+     * Pages one relay past its server-side limit. Relays such as strfry cap a REQ without
+     * {@code limit} (500 by default) and return the newest first, then EOSE as if complete. So
+     * each page re-queries with {@code until = min(created_at)} of the previous one (inclusive),
+     * deduplicating by id, until a page brings nothing new. Fails closed when the stalled page
+     * holds {@link #SAME_SECOND_REFUSAL} or more events at its {@code until} (that second may be
+     * cut by the relay's cap), when the union exceeds {@link #MAX_QUERY_EVENTS}, or when the
+     * page count exceeds {@code MAX_QUERY_EVENTS / firstPageSize + 2}.
+     */
+    private static Collection<GenericEvent> pagedQuery(String relayUrl, Map<String, List<String>> filter,
+                                                       long timeoutMs) {
+        Map<String, GenericEvent> seen = new LinkedHashMap<>();
+        Map<String, List<String>> pageFilter = new LinkedHashMap<>(filter);
+        int maxPages = Integer.MAX_VALUE;
+        Long until = null;
+        for (int page = 0; ; page++) {
+            if (page >= maxPages) {
+                throw new VoucherNostrException("Relay " + relayUrl + " needed more than " + maxPages
+                        + " pages: refusing the answer");
+            }
+            List<GenericEvent> events = runPage(relayUrl, pageFilter, timeoutMs);
+            if (page == 0) {
+                maxPages = MAX_QUERY_EVENTS / Math.max(1, events.size()) + 2;
+            }
+            int added = 0;
+            long min = Long.MAX_VALUE;
+            for (GenericEvent e : events) {
+                long t = e.getCreatedAt() == null ? 0L : e.getCreatedAt();
+                min = Math.min(min, t);
+                if (seen.putIfAbsent(e.getId(), e) == null) {
+                    added++;
+                }
+            }
+            requireAtMostMax(seen.size());
+            if (added == 0) {
+                if (until != null) {
+                    final long t = until;
+                    long atT = events.stream().filter(e -> e.getCreatedAt() != null && e.getCreatedAt() == t).count();
+                    if (atT >= SAME_SECOND_REFUSAL) {
+                        throw new VoucherNostrException("Relay " + relayUrl + " stalled with " + atT
+                                + " events at created_at " + t + ": the answer may be truncated, refusing it");
+                    }
+                }
+                return seen.values();
+            }
+            until = min;
+            pageFilter.put("until", List.of(Long.toString(min)));
+        }
+    }
+
+    private static List<GenericEvent> runPage(String relayUrl, Map<String, List<String>> filter, long timeoutMs) {
+        CompletableFuture<List<GenericEvent>> f =
+                RelayQuery.run(relayUrl, generateSubscriptionId(), filter, timeoutMs);
         try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                    .orTimeout(timeoutMs, TimeUnit.MILLISECONDS)
-                    .join();
+            return f.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            f.cancel(true);
+            throw new VoucherNostrException("Relay query interrupted", e);
         } catch (Exception e) {
-            log.warn("Some query operations timed out or failed", e);
+            f.cancel(true);
+            throw new VoucherNostrException("Relay did not answer the query completely: " + relayUrl,
+                    e instanceof java.util.concurrent.ExecutionException && e.getCause() != null ? e.getCause() : e);
         }
+    }
 
-        List<GenericEvent> results = new ArrayList<>(eventMap.values());
-        log.debug("Query complete: {} unique event(s) found", results.size());
-
-        return results;
+    private static void requireAtMostMax(int count) {
+        if (count > MAX_QUERY_EVENTS) {
+            throw new VoucherNostrException("Query matched more than " + MAX_QUERY_EVENTS
+                    + " events: refusing the answer");
+        }
     }
 
     /**
@@ -361,7 +436,7 @@ public class NostrClientAdapter {
      *
      * @return random subscription ID
      */
-    private String generateSubscriptionId() {
+    private static String generateSubscriptionId() {
         return "sub_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 
@@ -384,24 +459,6 @@ public class NostrClientAdapter {
             // For now, simulate connection
             log.debug("Simulating connection to: {}", url);
             connected = true;
-        }
-
-        boolean publish(GenericEvent event) {
-            if (!connected) {
-                throw new VoucherNostrException("Relay not connected");
-            }
-            // TODO: Implement actual EVENT message sending
-            log.debug("Simulating publish to: {}", url);
-            return true;
-        }
-
-        List<GenericEvent> query(String subscriptionId) {
-            if (!connected) {
-                throw new VoucherNostrException("Relay not connected");
-            }
-            // TODO: Implement actual REQ/EOSE handling
-            log.debug("Simulating query to: {} with subscription: {}", url, subscriptionId);
-            return Collections.emptyList();
         }
 
         void close() {

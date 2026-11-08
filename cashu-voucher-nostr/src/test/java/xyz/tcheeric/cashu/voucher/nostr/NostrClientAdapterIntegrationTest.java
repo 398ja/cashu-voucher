@@ -56,8 +56,10 @@ class NostrClientAdapterIntegrationTest {
         GenericEvent event = new GenericEvent();
         event.setKind(1);
         event.setContent("Integration test event");
+        event.setTags(new java.util.ArrayList<>());
+        TestEventSigner.sign(event, "c3".repeat(32), System.currentTimeMillis() / 1000);
 
-        boolean result = adapter.publishEvent(event, 5000L);
+        boolean result = adapter.publishEvent(event, 15000L);
         assertTrue(result, "Event should be published successfully");
     }
 
