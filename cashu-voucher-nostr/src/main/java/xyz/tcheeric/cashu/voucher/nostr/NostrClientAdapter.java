@@ -275,18 +275,21 @@ public class NostrClientAdapter {
     public static final int MAX_QUERY_EVENTS = 4096;
 
     /**
-     * A page whose events all share one {@code created_at} and number at least this many may
-     * have been cut by the relay inside that second, which no {@code until} can page past, so
-     * the query is refused. Legitimate ledger and backup data never has this many in a second.
+     * When paging stalls (a page adds nothing new) at {@code until = T}, the stalled page holds
+     * the relay's answer for events at T and older. If it contains this many or more events at T,
+     * the relay may have cut that second off at its cap, which no {@code until} can page past, so
+     * the answer is refused. Assumes every relay returns at least {@code SAME_SECOND_REFUSAL + 1}
+     * events per REQ (strfry and the gateway return 500). Shared with the TS reader.
      */
-    static final int SAME_SECOND_PAGE_LIMIT = 50;
+    static final int SAME_SECOND_REFUSAL = 10;
 
     /**
      * Pages one relay past its server-side limit. Relays such as strfry cap a REQ without
      * {@code limit} (500 by default) and return the newest first, then EOSE as if complete. So
      * each page re-queries with {@code until = min(created_at)} of the previous one (inclusive),
-     * deduplicating by id, until a page brings nothing new. Fails closed when a page could hide
-     * events inside one second, when the union exceeds {@link #MAX_QUERY_EVENTS}, or when the
+     * deduplicating by id, until a page brings nothing new. Fails closed when the stalled page
+     * holds {@link #SAME_SECOND_REFUSAL} or more events at its {@code until} (that second may be
+     * cut by the relay's cap), when the union exceeds {@link #MAX_QUERY_EVENTS}, or when the
      * page count exceeds {@code MAX_QUERY_EVENTS / firstPageSize + 2}.
      */
     private static Collection<GenericEvent> pagedQuery(String relayUrl, Map<String, List<String>> filter,
@@ -294,6 +297,7 @@ public class NostrClientAdapter {
         Map<String, GenericEvent> seen = new LinkedHashMap<>();
         Map<String, List<String>> pageFilter = new LinkedHashMap<>(filter);
         int maxPages = Integer.MAX_VALUE;
+        Long until = null;
         for (int page = 0; ; page++) {
             if (page >= maxPages) {
                 throw new VoucherNostrException("Relay " + relayUrl + " needed more than " + maxPages
@@ -305,23 +309,26 @@ public class NostrClientAdapter {
             }
             int added = 0;
             long min = Long.MAX_VALUE;
-            long max = Long.MIN_VALUE;
             for (GenericEvent e : events) {
                 long t = e.getCreatedAt() == null ? 0L : e.getCreatedAt();
                 min = Math.min(min, t);
-                max = Math.max(max, t);
                 if (seen.putIfAbsent(e.getId(), e) == null) {
                     added++;
                 }
             }
             requireAtMostMax(seen.size());
             if (added == 0) {
+                if (until != null) {
+                    final long t = until;
+                    long atT = events.stream().filter(e -> e.getCreatedAt() != null && e.getCreatedAt() == t).count();
+                    if (atT >= SAME_SECOND_REFUSAL) {
+                        throw new VoucherNostrException("Relay " + relayUrl + " stalled with " + atT
+                                + " events at created_at " + t + ": the answer may be truncated, refusing it");
+                    }
+                }
                 return seen.values();
             }
-            if (min == max && events.size() >= SAME_SECOND_PAGE_LIMIT) {
-                throw new VoucherNostrException("Relay " + relayUrl + " returned " + events.size()
-                        + " events in one second: the answer may be truncated, refusing it");
-            }
+            until = min;
             pageFilter.put("until", List.of(Long.toString(min)));
         }
     }

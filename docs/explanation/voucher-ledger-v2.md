@@ -178,6 +178,16 @@ A reader that cannot get a complete answer (no relay connection, an error, a `CL
 empty result means every queried relay reached `EOSE` with nothing accepted. Otherwise a
 REDEEMED or REVOKED voucher would read as unknown.
 
+Relays may cap a REQ without `limit` (strfry: 500, newest first) and still send `EOSE`, so a
+reader pages: it re-queries with `until` = the oldest `created_at` of the previous page
+(inclusive), deduplicates by id, and stops when a page adds nothing new. When it stops at
+`until = T`, it counts the events at `T` in that stalled page; if there are **10** or more
+(`SAME_SECOND_REFUSAL`) the relay may have cut that second at its cap, which no `until` can
+page past, so the answer is refused. It also refuses above 4096 events in total or more than
+`4096 / first page size + 2` pages. This assumes every relay (and the gateway) returns at least
+11 events per REQ; strfry and the gateway return 500. A relay capping at 10 or fewer cannot be
+detected and must not be used.
+
 A local cache of ledger events is only safe as read-through-and-merge (always ask the relay,
 take the union with cached events, verify all of them), or as a short-circuit after a verified
 terminal event (`REDEEMED` or `REVOKED`). Never short-circuit on `ISSUED`: a later terminal

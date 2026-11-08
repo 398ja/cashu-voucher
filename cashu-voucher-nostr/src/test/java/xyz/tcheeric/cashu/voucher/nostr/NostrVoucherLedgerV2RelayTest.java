@@ -112,16 +112,41 @@ class NostrVoucherLedgerV2RelayTest {
         }
     }
 
-    @Test
-    @DisplayName("N1: a full capped page inside one second cannot be paged past: refused")
-    void sameSecondPageRefused() {
-        relay.cap = NostrClientAdapter.SAME_SECOND_PAGE_LIMIT;
+    void sameSecond(int cap, int atT, int expectAtT) {
+        relay.cap = cap;
         VoucherFields mine = fields(NostrVoucherLedgerV2RepositoryTest.VOUCHER_ID);
         putAt(VoucherStatus.REVOKED, mine, STALL_SK, 1_700_000_000L);
-        for (int i = 0; i < NostrClientAdapter.SAME_SECOND_PAGE_LIMIT + 1; i++) {
+        for (int i = 0; i < atT; i++) {
             putAt(VoucherStatus.ISSUED, mine, PLATFORM_SK, 1_700_000_500L);
         }
-        assertThatThrownBy(() -> repo(5000).resolve(mine.ref())).isInstanceOf(VoucherNostrException.class);
+        assertThat(atT).isEqualTo(expectAtT);
+    }
+
+    @Test
+    @DisplayName("N1: cap 10, 11 events in one newer second, older REVOKED: cannot be proved complete, refused")
+    void sameSecondAtCapRefused() {
+        sameSecond(10, 11, 11);
+        assertThatThrownBy(() -> repo(5000).resolve(fields(NostrVoucherLedgerV2RepositoryTest.VOUCHER_ID).ref()))
+                .isInstanceOf(VoucherNostrException.class).hasMessageContaining("stalled");
+    }
+
+    @Test
+    @DisplayName("N1: cap 20, 9 events in one newer second, older REVOKED: reached, resolves REVOKED")
+    void sameSecondBelowRefusalResolves() {
+        sameSecond(20, 9, 9);
+        assertThat(repo(5000).resolve(fields(NostrVoucherLedgerV2RepositoryTest.VOUCHER_ID).ref()).orElseThrow()
+                .status()).isEqualTo(VoucherStatus.REVOKED);
+    }
+
+    @Test
+    @DisplayName("N1: 3 legitimate events in the same second resolve normally")
+    void threeSameSecondNormal() {
+        relay.cap = 500;
+        VoucherFields mine = fields(NostrVoucherLedgerV2RepositoryTest.VOUCHER_ID);
+        putAt(VoucherStatus.ISSUED, mine, PLATFORM_SK, 1_700_000_000L);
+        putAt(VoucherStatus.ISSUED, mine, PLATFORM_SK, 1_700_000_000L);
+        putAt(VoucherStatus.REDEEMED, mine, STALL_SK, 1_700_000_000L);
+        assertThat(repo(5000).resolve(mine.ref()).orElseThrow().status()).isEqualTo(VoucherStatus.REDEEMED);
     }
 
     @Test
