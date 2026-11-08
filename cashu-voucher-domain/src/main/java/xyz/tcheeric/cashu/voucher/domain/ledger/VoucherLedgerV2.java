@@ -20,6 +20,7 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -266,9 +267,10 @@ public final class VoucherLedgerV2 {
      *
      * @param entry the verified entry; its {@code doc} is {@code null} when absent or dropped
      * @param signer x-only hex of the inner signer
+     * @param sig lowercase hex of the inner signature, the deterministic tie-break in {@link #resolve}
      * @param docDropped true when a {@code doc} was present but did not verify
      */
-    public record Opened(LedgerEntry entry, String signer, boolean docDropped) {
+    public record Opened(LedgerEntry entry, String signer, String sig, boolean docDropped) {
         public int seq() {
             return entry.seq();
         }
@@ -404,10 +406,27 @@ public final class VoucherLedgerV2 {
         byte[] doc = null;
         boolean dropped = false;
         if (docNode != null) {
-            doc = verifiedDoc(docNode.textValue(), fields);
-            dropped = doc == null;
+            VoucherSecret docVoucher = verifiedDoc(docNode.textValue(), fields);
+            if (docVoucher != null) {
+                VoucherFields signed;
+                try {
+                    signed = VoucherFields.of(docVoucher);
+                } catch (RuntimeException e) {
+                    signed = null;
+                }
+                if (signed == null) {
+                    dropped = true;
+                } else if (!signed.equals(fields)) {
+                    throw new LedgerRefusedException(LedgerRefusal.DOC_MISMATCH,
+                            "voucher fields differ from the signed doc");
+                } else {
+                    doc = Hex.decode(docNode.textValue());
+                }
+            } else {
+                dropped = true;
+            }
         }
-        return new Opened(new LedgerEntry(status, fields, doc), signer, dropped);
+        return new Opened(new LedgerEntry(status, fields, doc), signer, sig, dropped);
     }
 
     /**
@@ -437,13 +456,17 @@ public final class VoucherLedgerV2 {
                 winner = o;
             }
         }
+        Set<String> trusted = trusted(trustedIssuerKeys);
+        Comparator<Opened> preference = Comparator
+                .comparing((Opened o) -> trusted.contains(o.signer()) ? 0 : 1)
+                .thenComparing(o -> o.entry().doc() != null ? 0 : 1)
+                .thenComparing(Opened::sig);
         Opened source = accepted.stream().filter(o -> o.status() == VoucherStatus.ISSUED)
-                .filter(o -> o.entry().doc() != null).findFirst()
-                .or(() -> accepted.stream().filter(o -> o.status() == VoucherStatus.ISSUED).findFirst())
-                .orElse(winner);
+                .min(preference).orElse(winner);
         byte[] doc = source.entry().doc();
         if (doc == null) {
-            doc = accepted.stream().map(o -> o.entry().doc()).filter(x -> x != null).findFirst().orElse(null);
+            doc = accepted.stream().filter(o -> o.entry().doc() != null)
+                    .min(Comparator.comparing(Opened::sig)).map(o -> o.entry().doc()).orElse(null);
         }
         return Optional.of(new Resolved(winner.status(), source.entry().voucher(), doc, accepted));
     }
@@ -565,7 +588,7 @@ public final class VoucherLedgerV2 {
      * The document bytes when {@code hex} decodes to a signed voucher blob for this voucher whose
      * issuer signature verifies; {@code null} otherwise.
      */
-    private static byte[] verifiedDoc(String hex, VoucherFields fields) {
+    private static VoucherSecret verifiedDoc(String hex, VoucherFields fields) {
         if (!EVEN_HEX.matcher(hex).matches()) {
             return null;
         }
@@ -581,7 +604,7 @@ public final class VoucherLedgerV2 {
                     || !VoucherSignatureService.verify(voucher)) {
                 return null;
             }
-            return bytes;
+            return voucher;
         } catch (RuntimeException unreadable) {
             return null;
         }

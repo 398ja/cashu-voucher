@@ -30,6 +30,8 @@ public enum LedgerRefusal {
     SEQ_MISMATCH,
     /** {@code signer} is not authorised for the status. */
     UNAUTHORISED_SIGNER,
+    /** {@code doc} verifies, but the body's voucher fields are not exactly the doc's. */
+    DOC_MISMATCH,
     /** Writer side: a terminal credential is never published. */
     TERMINAL_CREDENTIAL,
     /** Writer side: the envelope does not fit 65535 bytes. */

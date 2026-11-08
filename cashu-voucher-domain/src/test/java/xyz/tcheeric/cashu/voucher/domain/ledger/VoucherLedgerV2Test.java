@@ -412,4 +412,29 @@ class VoucherLedgerV2Test {
         s.wipe();
         assertThat(s.eventSecretKey()).isEqualTo(new byte[32]);
     }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("several ISSUED events fold to the same fields in either relay order")
+    void issuedChoiceIsOrderIndependent() {
+        VoucherFields a = fields(null);
+        VoucherFields b = new VoucherFields(VOUCHER_ID, STALL, PLATFORM, "sat", 5000L, 2L, 1890000000L, "hi",
+                "MINIMAL", "0.5", null, null);
+        VoucherFields c = new VoucherFields(VOUCHER_ID, STALL, PLATFORM, "sat", 7000L, 2L, 1990000000L, "hi",
+                "MINIMAL", "0.5", null, null);
+        LedgerEvent platform = issued(a);
+        LedgerEvent stallB = VoucherLedgerV2.seal(new LedgerEntry(VoucherStatus.ISSUED, b, null),
+                Hex.decode(STALL_SK), STALL_ROOT).template();
+        LedgerEvent stallC = VoucherLedgerV2.seal(new LedgerEntry(VoucherStatus.ISSUED, c, null),
+                Hex.decode(STALL_SK), STALL_ROOT).template();
+        List<String> trusted = List.of(PLATFORM);
+
+        for (List<LedgerEvent> order : List.of(List.of(platform, stallB, stallC), List.of(stallC, stallB, platform),
+                List.of(stallB, platform, stallC))) {
+            assertThat(VoucherLedgerV2.resolve(order, a.ref(), trusted).orElseThrow().voucher()).isEqualTo(a);
+        }
+        // only stall-signed: tie broken by inner signature, same answer in both orders
+        VoucherFields one = VoucherLedgerV2.resolve(List.of(stallB, stallC), a.ref(), trusted).orElseThrow().voucher();
+        VoucherFields two = VoucherLedgerV2.resolve(List.of(stallC, stallB), a.ref(), trusted).orElseThrow().voucher();
+        assertThat(one).isEqualTo(two);
+    }
 }

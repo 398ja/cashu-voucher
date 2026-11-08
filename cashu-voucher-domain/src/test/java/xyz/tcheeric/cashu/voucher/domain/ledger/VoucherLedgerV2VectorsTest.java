@@ -226,6 +226,18 @@ class VoucherLedgerV2VectorsTest {
         forged.put("note", "outer pubkey is a key derived from ref alone; the outer author is never trusted");
         negative.add(forged);
 
+        // doc verifies, but the body claims another faceValue: refused (M3)
+        VoucherFields inflated = new VoucherFields(VOUCHER_ID, stallPub, platformPub, "sat", 99000L, 2L,
+                1790000000L, "hi", "MINIMAL", "0.5", null, null);
+        String inflatedBody = VoucherLedgerV2.writeBody(new LedgerEntry(VoucherStatus.ISSUED, base, doc), ref)
+                .replace("\"faceValue\":1000", "\"faceValue\":99000");
+        negative.add(crafted("doc-verifies-but-body-faceValue-differs", inflated, inflatedBody,
+                STALL_SK, "stall", "DOC_MISMATCH"));
+
+        // a stall-signed ISSUED with other fields and no doc, racing the platform one
+        sealed.add(sealCase("issued-stall-other-fields", "stall", "stall", inflated, VoucherStatus.ISSUED,
+                null, 11, 12));
+
         ObjectNode wrongD = sealCase("wrong-d", "platform", "platform", other, VoucherStatus.ISSUED, null, 0x41, 0x42);
         negative.addObject().put("name", "event-at-another-locator")
                 .put("issuerId", base.issuerId()).put("voucherId", base.voucherId())
@@ -247,6 +259,15 @@ class VoucherLedgerV2VectorsTest {
         resolve.addObject().put("name", "nothing-accepted")
                 .putNull("expectedStatus")
                 .putArray("events").add("negative:redeemed-signed-by-platform");
+        resolve.addObject().put("name", "platform-issued-beats-stall-issued-platform-first")
+                .put("expectedStatus", "ISSUED").put("expectedFaceValue", 1000)
+                .putArray("events").add("issued-platform-with-doc").add("issued-stall-other-fields");
+        resolve.addObject().put("name", "platform-issued-beats-stall-issued-stall-first")
+                .put("expectedStatus", "ISSUED").put("expectedFaceValue", 1000)
+                .putArray("events").add("issued-stall-other-fields").add("issued-platform-with-doc");
+        resolve.addObject().put("name", "mismatched-doc-event-ignored")
+                .put("expectedStatus", "ISSUED").put("expectedFaceValue", 1000)
+                .putArray("events").add("negative:doc-verifies-but-body-faceValue-differs").add("issued-platform-expiring");
         return root;
     }
 
@@ -478,6 +499,10 @@ class VoucherLedgerV2VectorsTest {
             } else {
                 assertThat(resolved).as(r.get("name").asText()).isPresent();
                 assertThat(resolved.get().status().name()).isEqualTo(r.get("expectedStatus").asText());
+                if (r.has("expectedFaceValue")) {
+                    assertThat(resolved.get().voucher().faceValue()).as(r.get("name").asText())
+                            .isEqualTo(r.get("expectedFaceValue").asLong());
+                }
             }
         }
     }

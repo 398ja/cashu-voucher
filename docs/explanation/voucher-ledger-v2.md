@@ -173,7 +173,9 @@ A local cache of ledger events is only safe as read-through-and-merge (always as
 take the union with cached events, verify all of them), or as a short-circuit after a verified
 terminal event (`REDEEMED` or `REVOKED`). Never short-circuit on `ISSUED`: a later terminal
 event would be missed. In Java the read goes through `LedgerV2EventSource`, so a cache can wrap
-the relay query under these rules.
+the relay query under these rules (tracked in cashu-voucher#67). The relay timeout is a
+constructor argument of `NostrVoucherLedgerV2Repository`, so callers tune latency; a timeout
+is an error, not an empty answer.
 
 Terminal detection fails closed: non-empty `merchantMetadata` that is not one strictly
 parseable JSON object, or whose `terminal` is `true` or `"true"`, is never published.
@@ -197,12 +199,20 @@ otherwise read them differently.
   anything but `0`, makes the envelope malformed.
 - `doc` is verified as an unlocked-voucher CBOR blob: it must decode, name the same `voucherId`
   and `issuerId`, and its issuer signature must verify. Anything else drops `doc` only.
+- When `doc` verifies, every `voucher` field of the body must equal the field the doc carries
+  (`issuerPublicKey`, `unit`, `faceValue`, `faceDecimals`, `expiresAt`, `memo`,
+  `backingStrategy`, `issuanceRatio` in canonical spelling, `merchantMetadata`,
+  `issuanceWarrant`; a field the doc lacks must be absent from the body). Otherwise the whole
+  event is refused (`DOC_MISMATCH`), so a signer cannot attach a genuine doc to inflated fields.
 - Locked (P2PK) vouchers carry no `doc` and no `issuanceWarrant`.
-- When several accepted `ISSUED` events exist, voucher fields come from the first one that
-  carries a verified `doc`, else the first `ISSUED` event.
+- When several accepted `ISSUED` events exist, voucher fields come from one chosen
+  independently of relay order: prefer a signer in the trusted issuer keys over `issuerId`,
+  then one carrying a verified `doc`, then the lowest inner `sig` (lowercase hex, compared as
+  strings). The inner `sig` is used rather than the outer event id because it is bound to the
+  body and is the same for every copy of the plaintext.
 - The reason names in the vector file (`UNAUTHORISED_SIGNER`, `SEQ_MISMATCH`, ...) are the
   first check that fails, in this order: address, decrypt, envelope shape (duplicate and unknown
-  keys included), inner signature, body shape, version, ref, status, seq, signer. A TypeScript
+  keys included), inner signature, body shape, version, ref, status, seq, signer, doc mismatch. A TypeScript
   reader needs only to refuse the same events; matching the reason is recommended.
 
 ## Known limit of content-derived encryption
