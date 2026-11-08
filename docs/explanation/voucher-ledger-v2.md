@@ -158,7 +158,9 @@ Republishing is idempotent: same address, same plaintext.
      (otherwise only `doc` is dropped, not the event).
 4. The status is the accepted event with the highest `seq`; on a tie, `REVOKED` beats
    `REDEEMED` beats `ISSUED`. Voucher fields come from the accepted `ISSUED` event when there
-   is one.
+   is one. The `doc` comes from that same event; if it has none, a `doc` is taken only from an
+   accepted event whose voucher fields equal the chosen fields exactly (lowest `sig` first),
+   otherwise no `doc` is returned. Voucher fields and `doc` therefore never disagree.
 
 Anyone who knows `ref` can publish many events at the same `d` under throwaway outer keys.
 Each is refused by the inner signature, but each costs the reader a fetch, so readers must not

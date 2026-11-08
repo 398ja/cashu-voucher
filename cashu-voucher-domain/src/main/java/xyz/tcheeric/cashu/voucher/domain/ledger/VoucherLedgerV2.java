@@ -496,7 +496,11 @@ public final class VoucherLedgerV2 {
                 .min(preference).orElse(winner);
         byte[] doc = source.entry().doc();
         if (doc == null) {
+            // Only a doc that signs exactly the source's fields (N4): otherwise voucher and doc
+            // could disagree, and a consumer verifying the doc would trust unsigned fields.
+            VoucherFields sourceFields = source.entry().voucher();
             doc = accepted.stream().filter(o -> o.entry().doc() != null)
+                    .filter(o -> o.entry().voucher().equals(sourceFields))
                     .min(Comparator.comparing(Opened::sig)).map(o -> o.entry().doc()).orElse(null);
         }
         return Optional.of(new Resolved(winner.status(), source.entry().voucher(), doc, accepted));

@@ -238,6 +238,12 @@ class VoucherLedgerV2VectorsTest {
         sealed.add(sealCase("issued-stall-other-fields", "stall", "stall", inflated, VoucherStatus.ISSUED,
                 null, 11, 12));
 
+        // a stall-signed ISSUED carrying a valid doc for the base fields (N4)
+        sealed.add(sealCase("issued-stall-with-doc", "stall", "stall", base, VoucherStatus.ISSUED,
+                doc, 13, 14));
+        sealed.add(sealCase("issued-platform-no-doc", "platform", "platform", base, VoucherStatus.ISSUED,
+                null, 15, 16));
+
         ObjectNode wrongD = sealCase("wrong-d", "platform", "platform", other, VoucherStatus.ISSUED, null, 0x41, 0x42);
         negative.addObject().put("name", "event-at-another-locator")
                 .put("issuerId", base.issuerId()).put("voucherId", base.voucherId())
@@ -268,6 +274,18 @@ class VoucherLedgerV2VectorsTest {
         resolve.addObject().put("name", "mismatched-doc-event-ignored")
                 .put("expectedStatus", "ISSUED").put("expectedFaceValue", 1000)
                 .putArray("events").add("negative:doc-verifies-but-body-faceValue-differs").add("issued-platform-expiring");
+        // N4: trusted ISSUED without doc (other memo) plus stall ISSUED with other fields and a doc.
+        // The trusted event is the source; the stall doc signs other fields, so no doc is returned.
+        resolve.addObject().put("name", "trusted-issued-without-doc-ignores-stall-doc-for-other-fields")
+                .put("expectedStatus", "ISSUED").put("expectedFaceValue", 1000).put("expectedDoc", false)
+                .putArray("events").add("issued-platform-expiring").add("issued-stall-with-doc");
+        resolve.addObject().put("name", "trusted-issued-without-doc-ignores-stall-doc-for-other-fields-reversed")
+                .put("expectedStatus", "ISSUED").put("expectedFaceValue", 1000).put("expectedDoc", false)
+                .putArray("events").add("issued-stall-with-doc").add("issued-platform-expiring");
+        // A doc from another event is kept when it signs exactly the source's fields.
+        resolve.addObject().put("name", "trusted-issued-without-doc-takes-doc-from-same-fields")
+                .put("expectedStatus", "ISSUED").put("expectedFaceValue", 1000).put("expectedDoc", true)
+                .putArray("events").add("issued-stall-with-doc").add("issued-platform-no-doc");
         return root;
     }
 
@@ -499,6 +517,10 @@ class VoucherLedgerV2VectorsTest {
             } else {
                 assertThat(resolved).as(r.get("name").asText()).isPresent();
                 assertThat(resolved.get().status().name()).isEqualTo(r.get("expectedStatus").asText());
+                if (r.has("expectedDoc")) {
+                    assertThat(resolved.get().doc() != null).as(r.get("name").asText() + " doc")
+                            .isEqualTo(r.get("expectedDoc").asBoolean());
+                }
                 if (r.has("expectedFaceValue")) {
                     assertThat(resolved.get().voucher().faceValue()).as(r.get("name").asText())
                             .isEqualTo(r.get("expectedFaceValue").asLong());
