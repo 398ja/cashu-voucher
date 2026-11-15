@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-15
+
+> Built on **cashu-lib 0.31.0** (released the same day). 0.30.x refuses a token carrying a `v`
+> map, so readers must be on 0.31.0 before anything emits by-reference vouchers; nothing does
+> yet. Ledger v1 stays the default.
+
 ### Added
 
 - **Vouchers by reference, reader side (#64, phase A).** An unlocked `VOUCHER` proof may carry
@@ -21,8 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MerchantVerificationService.verifyOffline(proofSecret, documents, issuerId)` and
   `validatePaymentPayload(payload, request, documents)`. A resolved v2 proof is byte-identical
   to its v1 form, so every check gives the same verdict. Golden vectors in
-  `voucher-by-reference-vectors.json`. Still on cashu-lib 0.30.7; documents are plain
-  `Map<String, byte[]>`.
+  `voucher-by-reference-vectors.json`. Documents are plain `Map<String, byte[]>`.
 
 - **Voucher ledger v2** (imani-gateway-customer#310, step 2), wire contract in
   `docs/explanation/voucher-ledger-v2.md`. Encrypted (NIP-44 v2), per-voucher-key, unlinkable
@@ -43,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   blob or a voucher id. Inline (v1) proofs behave exactly as before.
 - `VoucherLedgerEvent` (v1) Javadoc marks it superseded by v2. No behaviour change; v1 stays the
   default, and a new test pins its content and tags.
-- Version 0.18.0-SNAPSHOT.
+- cashu-lib 0.31.0 (was 0.30.7).
 
 ## [0.17.1] - 2026-10-22
 
