@@ -112,7 +112,7 @@ Wallets keep each document once, keyed by its hash, next to the proofs that refe
    - **imani-gateway-core** (#218, with imani-bom 0.2.23): the split, measure, issuance token
      reader and orphaned-swap recovery read `v`, send `vouchers`, and carry the document in
      the send and keep tokens.
-   - **imani-gateway-customer**: receive, burn, redemption declarations, the merchant policy,
+   - **imani-gateway-customer** (#321): receive, burn, redemption declarations, the merchant policy,
      recovered-batch classification, the ledger v2 publisher and the bearer split and Cashlink
      routes (an optional `predecessor_document`) read v2. Issuance emits v2 behind
      `gateway.voucher.by-reference.enabled`, default off.
