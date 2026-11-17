@@ -1,7 +1,8 @@
 # A voucher stored once per token, referenced from each proof
 
-Status: readers and carriers implemented (cashu-voucher#64, phase A). Producers stay on
-the inline form until every reader ships (phase B).
+Status: readers and carriers implemented in every repo (cashu-voucher#64, phases A and B).
+The one producer of unlocked vouchers, imani-gateway-customer issuance, emits v2 only behind
+`gateway.voucher.by-reference.enabled` (default off). Locked `P2PK_VOUCHER` stays inline.
 
 ## The problem
 
@@ -103,7 +104,33 @@ Wallets keep each document once, keyed by its hash, next to the proofs that refe
 2. **Phase B: the remaining readers**, then the producers behind a flag: imani-wallet-lib
    (token codec, swaps), imani-gateway-customer (issuance, bundle sends, burns, the Cashlink
    and split routes), imani-gateway-core, imani-gateway-portal. A producer emits v2 only once
-   every reader in its path is on phase A or later.
+   every reader in its path is on phase A or later. Shipped as:
+   - **imani-wallet-lib** (#159): `TokenEnvelope` carries `v`, `TokenV4Codec` decodes and
+     writes it (unreferenced entries dropped), swaps from by-reference inputs send `vouchers`,
+     and the wallet keeps documents in an encrypted `voucher_documents` table. A by-reference
+     proof whose document is missing is refused before the mint is asked.
+   - **imani-gateway-core** (#218, with imani-bom 0.2.23): the split, measure, issuance token
+     reader and orphaned-swap recovery read `v`, send `vouchers`, and carry the document in
+     the send and keep tokens.
+   - **imani-gateway-customer** (#321): receive, burn, redemption declarations, the merchant policy,
+     recovered-batch classification, the ledger v2 publisher and the bearer split and Cashlink
+     routes (an optional `predecessor_document`) read v2. Issuance emits v2 behind
+     `gateway.voucher.by-reference.enabled`, default off.
+   - **imani-gateway-portal**: no change. It never decodes a token or reads a proof's voucher;
+     it hands tokens to customer-wallet.
+   - **imani-wallet**: no producer. It mints no unlocked `VOUCHER` outputs of its own (it only
+     proposes unsigned successors that the gateway signs), and it already reads and carries v2
+     (#579).
+
+   Turning the flag on needs the imani-wallet-lib release and an imani-bom bump in
+   imani-gateway-customer, every Imani wallet on #579 or later, and imani-wallet sending
+   `predecessor_document` on the Cashlink lock and bearer split routes, whose predecessor is an
+   unlocked coupon (today it sends only `predecessor_secret`, so a v2 coupon is refused there as
+   not a bearer voucher). Routes whose predecessor is locked are unaffected.
+
+   Measured (imani-wallet-lib `TokenV4CodecVoucherByReferenceTest`): a 7-proof coupon
+   (8192 to 1 sats) with an 813-byte document, the staging shape above, goes from 16,692 to
+   3,284 characters, 5.1 times smaller.
 3. v1 proofs keep verifying for as long as they live. There is no conversion: changing `data`
    changes `Y`, so an existing proof cannot be compacted. Proofs move to v2 when a v2-aware
    wallet mints new outputs for them in a swap.
