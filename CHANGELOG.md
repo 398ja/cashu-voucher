@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Bump nostr-java from 2.0.0 to 2.4.4 (version property only; imani-bom unchanged).
+
 ## [0.18.0] - 2026-11-15
 
 > Built on **cashu-lib 0.31.0** (released the same day). 0.30.x refuses a token carrying a `v`
