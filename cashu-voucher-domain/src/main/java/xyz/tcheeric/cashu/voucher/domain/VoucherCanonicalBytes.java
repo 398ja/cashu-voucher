@@ -294,11 +294,37 @@ public final class VoucherCanonicalBytes {
      * a decimal point they never had when signed.
      */
     private static Number parseNumber(String raw) {
+        if (cannotBeLong(raw)) {
+            // Long.valueOf would throw here; skipping it avoids building an exception and its
+            // stack trace on every fractional ratio, which was a fifth of the rendering cost.
+            return Double.valueOf(raw);
+        }
         try {
             return Long.valueOf(raw);
         } catch (NumberFormatException notIntegral) {
             return Double.valueOf(raw);
         }
+    }
+
+    /**
+     * True only when {@code Long.valueOf} is certain to refuse {@code raw}: it is all ASCII and
+     * is not an optional sign followed by ASCII digits. Non-ASCII input goes the slow way,
+     * because {@code Long.valueOf} accepts non-ASCII digits.
+     */
+    private static boolean cannotBeLong(String raw) {
+        int n = raw.length();
+        int i = n > 0 && (raw.charAt(0) == '-' || raw.charAt(0) == '+') ? 1 : 0;
+        boolean refused = i == n;
+        for (; i < n; i++) {
+            char c = raw.charAt(i);
+            if (c >= 0x80) {
+                return false;
+            }
+            if (c < '0' || c > '9') {
+                refused = true;
+            }
+        }
+        return refused;
     }
 
     private static void appendNumber(StringBuilder sb, Number value, NumericTagForm numericForm) {
