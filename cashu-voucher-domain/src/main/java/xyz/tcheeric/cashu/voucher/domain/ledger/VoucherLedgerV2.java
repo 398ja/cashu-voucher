@@ -5,7 +5,7 @@ import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import nostr.crypto.schnorr.Schnorr;
+import xyz.tcheeric.cashu.voucher.domain.util.Bip340;
 import org.bouncycastle.util.encoders.Hex;
 import xyz.tcheeric.cashu.common.nut11.P2PKVoucherSecret;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
@@ -153,7 +153,7 @@ public final class VoucherLedgerV2 {
         byte[] ref = voucher.ref();
         String d = VoucherLedgerRef.locator(ref);
         String body = writeBody(entry, ref);
-        String envelope = writeEnvelope(body, d, signerSecretKey, auxRand);
+        String envelope = writeEnvelope(body, d, signerSecretKey, signer, auxRand);
         byte[] k = VoucherLedgerRef.key(ref);
         byte[] skV = VoucherLedgerRef.eventKey(eventKeyRoot, ref);
         try {
@@ -204,10 +204,14 @@ public final class VoucherLedgerV2 {
 
     /** Signs {@code body} and pads the envelope to its bucket. */
     static String writeEnvelope(String body, String d, byte[] signerSecretKey, byte[] auxRand) {
-        String signer = Hex.toHexString(publicKey(signerSecretKey));
+        return writeEnvelope(body, d, signerSecretKey, Hex.toHexString(publicKey(signerSecretKey)), auxRand);
+    }
+
+    /** As above, with the signer's x-only key already derived from {@code signerSecretKey}. */
+    private static String writeEnvelope(String body, String d, byte[] signerSecretKey, String signer, byte[] auxRand) {
         String sig;
         try {
-            sig = Hex.toHexString(Schnorr.sign(statement(d, body), signerSecretKey, auxRand));
+            sig = Hex.toHexString(Bip340.sign(statement(d, body), signerSecretKey, auxRand));
         } catch (Exception e) {
             throw new IllegalArgumentException("could not sign ledger body: " + e.getMessage(), e);
         }
@@ -371,7 +375,7 @@ public final class VoucherLedgerV2 {
         }
         boolean verified;
         try {
-            verified = Schnorr.verify(statement(d, body), Hex.decode(signer), Hex.decode(sig));
+            verified = Bip340.verify(statement(d, body), Hex.decode(signer), Hex.decode(sig));
         } catch (Exception e) {
             verified = false;
         }
@@ -647,7 +651,7 @@ public final class VoucherLedgerV2 {
 
     private static byte[] publicKey(byte[] secretKey) {
         try {
-            return Schnorr.genPubKey(secretKey);
+            return Bip340.publicKey(secretKey);
         } catch (Exception e) {
             throw new IllegalArgumentException("invalid secret key", e);
         }
