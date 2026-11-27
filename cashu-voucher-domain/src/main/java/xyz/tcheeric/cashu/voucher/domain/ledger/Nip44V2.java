@@ -159,14 +159,34 @@ public final class Nip44V2 {
      */
     private static byte[] chacha(MessageKeys keys, byte[] input) {
         try {
-            Cipher cipher = Cipher.getInstance("ChaCha20");
-            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(keys.chachaKey(), "ChaCha20"),
+            Cipher cipher = CHACHA.get();
+            // DECRYPT_MODE for both directions: raw ChaCha20 is the same keystream XOR either
+            // way, and ENCRYPT_MODE on a reused instance refuses a repeated key and nonce, a
+            // check the BouncyCastle engine this replaced never made. Nonce freshness is the
+            // caller's contract, as before.
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(keys.chachaKey(), "ChaCha20"),
                     new ChaCha20ParameterSpec(keys.chachaNonce(), 0));
             return cipher.doFinal(input);
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("ChaCha20 not available", e);
         }
     }
+
+    /** Per-thread instances: JCA lookups cost about as much as the work on a small payload. */
+    private static final ThreadLocal<Cipher> CHACHA = ThreadLocal.withInitial(() -> {
+        try {
+            return Cipher.getInstance("ChaCha20");
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("ChaCha20 not available", e);
+        }
+    });
+    private static final ThreadLocal<Mac> HMAC = ThreadLocal.withInitial(() -> {
+        try {
+            return Mac.getInstance("HmacSHA256");
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("HmacSHA256 not available", e);
+        }
+    });
 
     private static byte[] hmac(byte[] key, byte[] nonce, byte[] ciphertext) {
         Mac mac = hmacSha256(key);
@@ -182,7 +202,7 @@ public final class Nip44V2 {
      */
     private static Mac hmacSha256(byte[] key) {
         try {
-            Mac mac = Mac.getInstance("HmacSHA256");
+            Mac mac = HMAC.get();
             mac.init(new SecretKeySpec(key, "HmacSHA256"));
             return mac;
         } catch (GeneralSecurityException e) {
