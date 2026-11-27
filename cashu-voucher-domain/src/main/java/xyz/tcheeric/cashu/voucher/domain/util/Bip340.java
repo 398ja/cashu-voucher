@@ -67,6 +67,43 @@ public final class Bip340 {
      */
     public static PublicKey liftX(byte[] x) {
         require(x != null && x.length == 32, "The public key must be a 32-byte array.");
+        KeyBytes cacheKey = new KeyBytes(x);
+        PublicKey cached = LIFTED.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        PublicKey lifted = lift(x);
+        if (lifted != null) {
+            if (LIFTED.size() >= LIFTED_CAPACITY) {
+                LIFTED.clear();
+            }
+            LIFTED.put(new KeyBytes(x.clone()), lifted);
+        }
+        return lifted;
+    }
+
+    /**
+     * Lifted keys by x-only bytes. A verifier sees few distinct keys (issuers, the platform), and
+     * BouncyCastle caches its multiplication tables on the point object, so keeping the point
+     * keeps the tables. Bounded; cleared wholesale when full, which is cheap and never wrong.
+     */
+    private static final int LIFTED_CAPACITY = 1024;
+    private static final java.util.concurrent.ConcurrentHashMap<KeyBytes, PublicKey> LIFTED =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private record KeyBytes(byte[] b) {
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof KeyBytes k && Arrays.equals(b, k.b);
+        }
+
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(b);
+        }
+    }
+
+    private static PublicKey lift(byte[] x) {
         if (new BigInteger(1, x).compareTo(P) >= 0) {
             return null;
         }
