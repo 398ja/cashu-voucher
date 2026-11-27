@@ -1,10 +1,8 @@
 package xyz.tcheeric.cashu.voucher.domain.ledger;
 
-import org.bouncycastle.crypto.engines.ChaCha7539Engine;
-import org.bouncycastle.crypto.params.KeyParameter;
-import org.bouncycastle.crypto.params.ParametersWithIV;
-
+import javax.crypto.Cipher;
 import javax.crypto.Mac;
+import javax.crypto.spec.ChaCha20ParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -15,8 +13,8 @@ import java.util.Base64;
 /**
  * NIP-44 version 2 encryption over a caller-supplied conversation key.
  *
- * <p>Implemented on BouncyCastle low-level primitives ({@link ChaCha7539Engine}) and
- * the JDK's mandatory HmacSHA256, so it needs no JCA provider registration. The
+ * <p>Implemented on the JDK's mandatory ChaCha20 and HmacSHA256, so it needs no JCA provider
+ * registration. The
  * ECDH step that derives a conversation key from two Nostr keys is deliberately absent: the
  * voucher ledger supplies its own conversation key (see {@code voucher-ledger-v2.md}).
  *
@@ -155,12 +153,19 @@ public final class Nip44V2 {
         }
     }
 
+    /**
+     * RFC 8439 ChaCha20 from block counter 0, via the JDK cipher every Java 11+ platform ships
+     * (vector-intrinsified on modern HotSpot). Encryption and decryption are the same keystream XOR.
+     */
     private static byte[] chacha(MessageKeys keys, byte[] input) {
-        ChaCha7539Engine engine = new ChaCha7539Engine();
-        engine.init(true, new ParametersWithIV(new KeyParameter(keys.chachaKey()), keys.chachaNonce()));
-        byte[] out = new byte[input.length];
-        engine.processBytes(input, 0, input.length, out, 0);
-        return out;
+        try {
+            Cipher cipher = Cipher.getInstance("ChaCha20");
+            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(keys.chachaKey(), "ChaCha20"),
+                    new ChaCha20ParameterSpec(keys.chachaNonce(), 0));
+            return cipher.doFinal(input);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("ChaCha20 not available", e);
+        }
     }
 
     private static byte[] hmac(byte[] key, byte[] nonce, byte[] ciphertext) {
