@@ -189,7 +189,9 @@ public final class Bip340 {
         require(auxRand != null && auxRand.length == 32, "aux must be 32 bytes");
         boolean oddY = kp.point.getAffineYCoord().testBitZero();
         byte[] sig = signWith(msg, oddY ? N.subtract(kp.d0) : kp.d0, kp.x, auxRand);
-        if (!verify(msg, new PublicKey(kp.x, oddY ? kp.point.negate().normalize() : kp.point), sig)) {
+        // Through the lifted-key cache, so a signer's repeated self checks reuse its tables.
+        PublicKey self = liftX(kp.x);
+        if (self == null || !verify(msg, self, sig)) {
             throw new IllegalStateException("Could not create a valid signature.");
         }
         return sig;
