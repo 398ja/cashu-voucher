@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 1)
 @Measurement(iterations = 5, time = 1)
-@Fork(value = 1, jvmArgs = {"-Xms1g", "-Xmx1g"})
+@Fork(value = 2, jvmArgs = {"-Xms1g", "-Xmx1g"})
 @State(Scope.Benchmark)
 public class VoucherAaeBenchmark {
 
