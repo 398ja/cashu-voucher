@@ -85,7 +85,7 @@ public final class VoucherCanonicalBytes {
     public static byte[] of(@NonNull WellKnownSecret secret, @NonNull NumericTagForm numericForm) {
         requireVoucherCarryingKind(secret);
 
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(256);
         sb.append("[\"").append(secret.getKind().name()).append("\",\"");
         sb.append(Hex.toHexString(secret.getData()));
         sb.append("\",\"");
@@ -354,7 +354,10 @@ public final class VoucherCanonicalBytes {
         if (input == null) {
             return "";
         }
-        StringBuilder sb = new StringBuilder();
+        if (!needsEscaping(input)) {
+            return input;
+        }
+        StringBuilder sb = new StringBuilder(input.length() + 16);
         for (char c : input.toCharArray()) {
             switch (c) {
                 case '"': sb.append("\\\""); break;
@@ -373,5 +376,15 @@ public final class VoucherCanonicalBytes {
             }
         }
         return sb.toString();
+    }
+
+    private static boolean needsEscaping(String input) {
+        for (int i = 0, n = input.length(); i < n; i++) {
+            char c = input.charAt(i);
+            if (c < 0x20 || c == '"' || c == '\\') {
+                return true;
+            }
+        }
+        return false;
     }
 }
