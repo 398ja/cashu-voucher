@@ -119,14 +119,40 @@ public final class Bip340 {
 
     /** Signs {@code msg}, then verifies the result as the library does before returning it. */
     public static byte[] sign(byte[] msg, byte[] secretKey, byte[] auxRand) {
+        return sign(msg, KeyPair.of(secretKey), auxRand);
+    }
+
+    /** A secret key with its public point derived once, for callers that need both. */
+    public static final class KeyPair {
+        private final BigInteger d0;
+        private final ECPoint point;
+        private final byte[] x;
+
+        private KeyPair(BigInteger d0, ECPoint point) {
+            this.d0 = d0;
+            this.point = point;
+            this.x = xBytes(point);
+        }
+
+        /** Derives {@code d*G} once. */
+        public static KeyPair of(byte[] secretKey) {
+            BigInteger d0 = secretScalar(secretKey);
+            return new KeyPair(d0, COMB.multiply(G, d0).normalize());
+        }
+
+        /** The 32-byte x-only public key. */
+        public byte[] publicKey() {
+            return x.clone();
+        }
+    }
+
+    /** Signs with a prepared key pair; same bytes and self check as {@link #sign(byte[], byte[], byte[])}. */
+    public static byte[] sign(byte[] msg, KeyPair kp, byte[] auxRand) {
         require(msg != null && msg.length == 32, "The message must be a 32-byte array.");
         require(auxRand != null && auxRand.length == 32, "aux must be 32 bytes");
-        BigInteger d0 = secretScalar(secretKey);
-        ECPoint pPoint = COMB.multiply(G, d0).normalize();
-        byte[] px = xBytes(pPoint);
-        boolean oddY = pPoint.getAffineYCoord().testBitZero();
-        byte[] sig = signWith(msg, oddY ? N.subtract(d0) : d0, px, auxRand);
-        if (!verify(msg, new PublicKey(px, oddY ? pPoint.negate().normalize() : pPoint), sig)) {
+        boolean oddY = kp.point.getAffineYCoord().testBitZero();
+        byte[] sig = signWith(msg, oddY ? N.subtract(kp.d0) : kp.d0, kp.x, auxRand);
+        if (!verify(msg, new PublicKey(kp.x, oddY ? kp.point.negate().normalize() : kp.point), sig)) {
             throw new IllegalStateException("Could not create a valid signature.");
         }
         return sig;

@@ -145,7 +145,8 @@ public final class VoucherLedgerV2 {
             throw new LedgerRefusedException(LedgerRefusal.TERMINAL_CREDENTIAL,
                     "terminal credentials are never published");
         }
-        String signer = Hex.toHexString(publicKey(signerSecretKey));
+        Bip340.KeyPair signerKeys = keyPair(signerSecretKey);
+        String signer = Hex.toHexString(signerKeys.publicKey());
         if (entry.status() != VoucherStatus.ISSUED && !signer.equals(voucher.issuerId())) {
             throw new LedgerRefusedException(LedgerRefusal.UNAUTHORISED_SIGNER,
                     entry.status() + " must be signed by the stall (issuerId)");
@@ -153,7 +154,7 @@ public final class VoucherLedgerV2 {
         byte[] ref = voucher.ref();
         String d = VoucherLedgerRef.locator(ref);
         String body = writeBody(entry, ref);
-        String envelope = writeEnvelope(body, d, signerSecretKey, signer, auxRand);
+        String envelope = writeEnvelope(body, d, signerKeys, signer, auxRand);
         byte[] k = VoucherLedgerRef.key(ref);
         byte[] skV = VoucherLedgerRef.eventKey(eventKeyRoot, ref);
         try {
@@ -204,14 +205,15 @@ public final class VoucherLedgerV2 {
 
     /** Signs {@code body} and pads the envelope to its bucket. */
     static String writeEnvelope(String body, String d, byte[] signerSecretKey, byte[] auxRand) {
-        return writeEnvelope(body, d, signerSecretKey, Hex.toHexString(publicKey(signerSecretKey)), auxRand);
+        Bip340.KeyPair keys = keyPair(signerSecretKey);
+        return writeEnvelope(body, d, keys, Hex.toHexString(keys.publicKey()), auxRand);
     }
 
-    /** As above, with the signer's x-only key already derived from {@code signerSecretKey}. */
-    private static String writeEnvelope(String body, String d, byte[] signerSecretKey, String signer, byte[] auxRand) {
+    /** As above, with the signer's key pair derived once by the caller. */
+    private static String writeEnvelope(String body, String d, Bip340.KeyPair signerKeys, String signer, byte[] auxRand) {
         String sig;
         try {
-            sig = Hex.toHexString(Bip340.sign(statement(d, body), signerSecretKey, auxRand));
+            sig = Hex.toHexString(Bip340.sign(statement(d, body), signerKeys, auxRand));
         } catch (Exception e) {
             throw new IllegalArgumentException("could not sign ledger body: " + e.getMessage(), e);
         }
@@ -646,6 +648,14 @@ public final class VoucherLedgerV2 {
             return voucher;
         } catch (RuntimeException unreadable) {
             return null;
+        }
+    }
+
+    private static Bip340.KeyPair keyPair(byte[] secretKey) {
+        try {
+            return Bip340.KeyPair.of(secretKey);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("invalid secret key", e);
         }
     }
 
