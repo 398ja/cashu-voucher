@@ -7,6 +7,7 @@ import org.bouncycastle.math.ec.ECCurve;
 import org.bouncycastle.math.ec.ECPoint;
 import org.bouncycastle.math.ec.FixedPointCombMultiplier;
 import org.bouncycastle.math.ec.FixedPointUtil;
+import org.bouncycastle.math.ec.WNafUtil;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -116,6 +117,8 @@ public final class Bip340 {
         } catch (IllegalArgumentException notOnCurve) {
             return null;
         }
+        // Cached keys are reused, so give them the wider wNAF window BC reserves for basepoints.
+        WNafUtil.configureBasepoint(point);
         return new PublicKey(x.clone(), point);
     }
 
