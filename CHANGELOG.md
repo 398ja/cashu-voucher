@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-28
+
 ### Changed
 
 - Bump nostr-java from 2.0.0 to 2.4.5 (version property only; imani-bom unchanged).
