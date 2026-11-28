@@ -11,7 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Bump nostr-java from 2.0.0 to 2.4.4 (version property only; imani-bom unchanged).
+- Bump nostr-java from 2.0.0 to 2.4.5 (version property only; imani-bom unchanged).
+
+### Performance
+
+Voucher crypto hot paths are about 44% faster (JMH geomean over the signature, ledger, NIP-44 and
+canonical benchmarks: 48.9 to 27.6 us). Outputs are byte-identical.
+
+- BIP-340 signing and verification run on a BouncyCastle-native `Bip340`, held to nostr-java's
+  `Schnorr` by a differential test. Signer keys are derived once per seal, and lifted public keys
+  sit in a bounded cache with BouncyCastle's wider basepoint window.
+- NIP-44 v2 uses the JDK's `HmacSHA256` (HKDF and MAC) and `ChaCha20`, with per-thread `Mac` and
+  `Cipher` instances. `VoucherLedgerRef` HMACs use the JDK `HmacSHA256` too.
+- Canonical JSON skips escaping for strings that need none and no longer throws and catches
+  `NumberFormatException` for fractional numeric tags.
 
 ### Fixed
 

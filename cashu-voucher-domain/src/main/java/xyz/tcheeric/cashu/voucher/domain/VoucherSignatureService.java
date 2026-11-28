@@ -2,7 +2,6 @@ package xyz.tcheeric.cashu.voucher.domain;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.NonNull;
-import nostr.crypto.schnorr.Schnorr;
 import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +9,7 @@ import xyz.tcheeric.cashu.common.nut10.WellKnownSecret;
 import xyz.tcheeric.cashu.common.nut18.VoucherSecret;
 import xyz.tcheeric.cashu.common.nut18.VoucherTags;
 import xyz.tcheeric.cashu.voucher.domain.VoucherCanonicalBytes.NumericTagForm;
+import xyz.tcheeric.cashu.voucher.domain.util.Bip340;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -138,7 +138,7 @@ public final class VoucherSignatureService {
             byte[] auxRand = new byte[32];
             SECURE_RANDOM.nextBytes(auxRand);
 
-            byte[] signature = Schnorr.sign(messageHash, privateKeyBytes, auxRand);
+            byte[] signature = Bip340.sign(messageHash, privateKeyBytes, auxRand);
 
             if (logger.isDebugEnabled()) {
                 logger.debug("Signed voucher {} (issuerId={}) with Schnorr signature length={}",
@@ -306,7 +306,14 @@ public final class VoucherSignatureService {
             byte[] canonicalBytes = getCanonicalBytesForSigning(secret);
             byte[] messageHash = sha256(canonicalBytes);
 
-            boolean valid = Schnorr.verify(messageHash, publicKeyBytes, signature);
+            // Lifted once: the legacy fallback below verifies under the same key.
+            Bip340.PublicKey publicKey = Bip340.liftX(publicKeyBytes);
+            if (publicKey == null) {
+                logger.warn("Signature verification failed for voucher {}: public key is not on the curve",
+                        VoucherMetadata.voucherId(secret));
+                return false;
+            }
+            boolean valid = Bip340.verify(messageHash, publicKey, signature);
 
             // Compatibility window. Every voucher issued before the fractional-tag fix
             // was signed over bytes where any Double was truncated by longValue(), so a
@@ -317,7 +324,7 @@ public final class VoucherSignatureService {
             if (!valid && allowLegacy && integralTagsAreIntegers(secret)) {
                 byte[] legacyHash = sha256(
                         VoucherCanonicalBytes.of(secret, NumericTagForm.TRUNCATED_TO_LONG));
-                valid = Schnorr.verify(legacyHash, publicKeyBytes, signature);
+                valid = Bip340.verify(legacyHash, publicKey, signature);
                 if (valid) {
                     // WARN, not INFO (audit M-29). Accepting the legacy form means one signature
                     // verifies over two different tag readings: a ratio of 0.056 and a ratio of

@@ -1,12 +1,12 @@
 package xyz.tcheeric.cashu.voucher.domain.ledger;
 
-import org.bouncycastle.crypto.digests.SHA256Digest;
-import org.bouncycastle.crypto.macs.HMac;
-import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.util.encoders.Hex;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -144,11 +144,13 @@ public final class VoucherLedgerRef {
     }
 
     static byte[] hmac(byte[] key, byte[] msg) {
-        HMac mac = new HMac(new SHA256Digest());
-        mac.init(new KeyParameter(key));
-        mac.update(msg, 0, msg.length);
-        byte[] out = new byte[32];
-        mac.doFinal(out, 0);
-        return out;
+        try {
+            // JDK HmacSHA256: mandatory on every platform and SHA-NI accelerated, unlike BC's HMac.
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(key, "HmacSHA256"));
+            return mac.doFinal(msg);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("HmacSHA256 not available", e);
+        }
     }
 }

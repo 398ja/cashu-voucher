@@ -85,7 +85,7 @@ public final class VoucherCanonicalBytes {
     public static byte[] of(@NonNull WellKnownSecret secret, @NonNull NumericTagForm numericForm) {
         requireVoucherCarryingKind(secret);
 
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(256);
         sb.append("[\"").append(secret.getKind().name()).append("\",\"");
         sb.append(Hex.toHexString(secret.getData()));
         sb.append("\",\"");
@@ -294,11 +294,37 @@ public final class VoucherCanonicalBytes {
      * a decimal point they never had when signed.
      */
     private static Number parseNumber(String raw) {
+        if (cannotBeLong(raw)) {
+            // Long.valueOf would throw here; skipping it avoids building an exception and its
+            // stack trace on every fractional ratio, which was a fifth of the rendering cost.
+            return Double.valueOf(raw);
+        }
         try {
             return Long.valueOf(raw);
         } catch (NumberFormatException notIntegral) {
             return Double.valueOf(raw);
         }
+    }
+
+    /**
+     * True only when {@code Long.valueOf} is certain to refuse {@code raw}: it is all ASCII and
+     * is not an optional sign followed by ASCII digits. Non-ASCII input goes the slow way,
+     * because {@code Long.valueOf} accepts non-ASCII digits.
+     */
+    private static boolean cannotBeLong(String raw) {
+        int n = raw.length();
+        int i = n > 0 && (raw.charAt(0) == '-' || raw.charAt(0) == '+') ? 1 : 0;
+        boolean refused = i == n;
+        for (; i < n; i++) {
+            char c = raw.charAt(i);
+            if (c >= 0x80) {
+                return false;
+            }
+            if (c < '0' || c > '9') {
+                refused = true;
+            }
+        }
+        return refused;
     }
 
     private static void appendNumber(StringBuilder sb, Number value, NumericTagForm numericForm) {
@@ -328,7 +354,10 @@ public final class VoucherCanonicalBytes {
         if (input == null) {
             return "";
         }
-        StringBuilder sb = new StringBuilder();
+        if (!needsEscaping(input)) {
+            return input;
+        }
+        StringBuilder sb = new StringBuilder(input.length() + 16);
         for (char c : input.toCharArray()) {
             switch (c) {
                 case '"': sb.append("\\\""); break;
@@ -347,5 +376,15 @@ public final class VoucherCanonicalBytes {
             }
         }
         return sb.toString();
+    }
+
+    private static boolean needsEscaping(String input) {
+        for (int i = 0, n = input.length(); i < n; i++) {
+            char c = input.charAt(i);
+            if (c < 0x20 || c == '"' || c == '\\') {
+                return true;
+            }
+        }
+        return false;
     }
 }

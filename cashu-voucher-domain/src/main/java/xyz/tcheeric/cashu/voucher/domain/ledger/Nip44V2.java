@@ -1,14 +1,11 @@
 package xyz.tcheeric.cashu.voucher.domain.ledger;
 
-import org.bouncycastle.crypto.digests.SHA256Digest;
-import org.bouncycastle.crypto.engines.ChaCha7539Engine;
-import org.bouncycastle.crypto.generators.HKDFBytesGenerator;
-import org.bouncycastle.crypto.macs.HMac;
-import org.bouncycastle.crypto.params.HKDFParameters;
-import org.bouncycastle.crypto.params.KeyParameter;
-import org.bouncycastle.crypto.params.ParametersWithIV;
-
+import javax.crypto.Cipher;
+import javax.crypto.Mac;
+import javax.crypto.spec.ChaCha20ParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Base64;
@@ -16,8 +13,8 @@ import java.util.Base64;
 /**
  * NIP-44 version 2 encryption over a caller-supplied conversation key.
  *
- * <p>Implemented on BouncyCastle low-level primitives ({@link ChaCha7539Engine},
- * {@link HMac}, {@link HKDFBytesGenerator}) so it needs no JCA provider registration. The
+ * <p>Implemented on the JDK's mandatory ChaCha20 and HmacSHA256, so it needs no JCA provider
+ * registration. The
  * ECDH step that derives a conversation key from two Nostr keys is deliberately absent: the
  * voucher ledger supplies its own conversation key (see {@code voucher-ledger-v2.md}).
  *
@@ -47,10 +44,21 @@ public final class Nip44V2 {
     static MessageKeys messageKeys(byte[] conversationKey, byte[] nonce) {
         require(conversationKey != null && conversationKey.length == 32, "conversation key must be 32 bytes");
         require(nonce != null && nonce.length == 32, "nonce must be 32 bytes");
-        HKDFBytesGenerator hkdf = new HKDFBytesGenerator(new SHA256Digest());
-        hkdf.init(HKDFParameters.skipExtractParameters(conversationKey, nonce));
+        // HKDF-Expand(PRK = conversationKey, info = nonce, L = 76): T(1) || T(2) || T(3)[..12],
+        // T(i) = HMAC(PRK, T(i-1) || info || i).
         byte[] okm = new byte[76];
-        hkdf.generateBytes(okm, 0, okm.length);
+        Mac mac = hmacSha256(conversationKey);
+        byte[] t = new byte[0];
+        for (int i = 1, off = 0; off < okm.length; i++) {
+            mac.update(t);
+            mac.update(nonce);
+            mac.update((byte) i);
+            t = mac.doFinal();
+            int n = Math.min(t.length, okm.length - off);
+            System.arraycopy(t, 0, okm, off, n);
+            off += n;
+        }
+        Arrays.fill(t, (byte) 0);
         MessageKeys keys = new MessageKeys(
                 Arrays.copyOfRange(okm, 0, 32),
                 Arrays.copyOfRange(okm, 32, 44),
@@ -145,22 +153,61 @@ public final class Nip44V2 {
         }
     }
 
+    /**
+     * RFC 8439 ChaCha20 from block counter 0, via the JDK cipher every Java 11+ platform ships
+     * (vector-intrinsified on modern HotSpot). Encryption and decryption are the same keystream XOR.
+     */
     private static byte[] chacha(MessageKeys keys, byte[] input) {
-        ChaCha7539Engine engine = new ChaCha7539Engine();
-        engine.init(true, new ParametersWithIV(new KeyParameter(keys.chachaKey()), keys.chachaNonce()));
-        byte[] out = new byte[input.length];
-        engine.processBytes(input, 0, input.length, out, 0);
-        return out;
+        try {
+            Cipher cipher = CHACHA.get();
+            // DECRYPT_MODE for both directions: raw ChaCha20 is the same keystream XOR either
+            // way, and ENCRYPT_MODE on a reused instance refuses a repeated key and nonce, a
+            // check the BouncyCastle engine this replaced never made. Nonce freshness is the
+            // caller's contract, as before.
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(keys.chachaKey(), "ChaCha20"),
+                    new ChaCha20ParameterSpec(keys.chachaNonce(), 0));
+            return cipher.doFinal(input);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("ChaCha20 not available", e);
+        }
     }
 
+    /** Per-thread instances: JCA lookups cost about as much as the work on a small payload. */
+    private static final ThreadLocal<Cipher> CHACHA = ThreadLocal.withInitial(() -> {
+        try {
+            return Cipher.getInstance("ChaCha20");
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("ChaCha20 not available", e);
+        }
+    });
+    private static final ThreadLocal<Mac> HMAC = ThreadLocal.withInitial(() -> {
+        try {
+            return Mac.getInstance("HmacSHA256");
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("HmacSHA256 not available", e);
+        }
+    });
+
     private static byte[] hmac(byte[] key, byte[] nonce, byte[] ciphertext) {
-        HMac mac = new HMac(new SHA256Digest());
-        mac.init(new KeyParameter(key));
-        mac.update(nonce, 0, nonce.length);
-        mac.update(ciphertext, 0, ciphertext.length);
-        byte[] out = new byte[32];
-        mac.doFinal(out, 0);
-        return out;
+        Mac mac = hmacSha256(key);
+        mac.update(nonce);
+        mac.update(ciphertext);
+        return mac.doFinal();
+    }
+
+    /**
+     * JDK HmacSHA256, which every Java platform must provide, so no provider registration is
+     * needed. It is used over BouncyCastle's {@code HMac} because the JDK's SHA-256 is
+     * intrinsified (SHA-NI) where the CPU has it; BC's pure-Java digest was most of the cost.
+     */
+    private static Mac hmacSha256(byte[] key) {
+        try {
+            Mac mac = HMAC.get();
+            mac.init(new SecretKeySpec(key, "HmacSHA256"));
+            return mac;
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("HmacSHA256 not available", e);
+        }
     }
 
     private static void require(boolean condition, String message) {
