@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Bump nostr-java from 2.0.0 to 2.4.4 (version property only; imani-bom unchanged).
 
+### Fixed
+
+- Upgrade Testcontainers from 1.19.7 to 1.21.4 so `NostrClientAdapterIntegrationTest` finds Docker
+  Engine 29+ (minimum API 1.40) on GitHub's runners. CI on `main` had failed since 2026-11-16.
+
 ## [0.18.0] - 2026-11-15
 
 > Built on **cashu-lib 0.31.0** (released the same day). 0.30.x refuses a token carrying a `v`
